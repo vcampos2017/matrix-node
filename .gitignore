@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+matrix_preview/
+secrets.py
+settings.toml
