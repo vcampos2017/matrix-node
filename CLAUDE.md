@@ -16,8 +16,15 @@
   (`chatty/nodes/matrix/status`, last will offline) and moon data; it never sends commands.
 - RAM is small (192 KB): keep modules split (CircuitPython compiles each file in RAM), avoid
   big strings and lists, use `time.monotonic_ns()` (floats lose precision after days).
-- Files: `chatty_matrix.py` app, `chatty_screen.py` display, `chatty_net.py` WiFi + MQTT,
-  `chatty_news.py` / `chatty_moon.py` / `chatty_clock.py` / `chatty_hub.py` pure Python
-  (tested on a computer), `chatty_art.py` icons, `chatty_bits.py` helpers.
+- Files: `chatty_matrix.py` app, `chatty_library.py` (mixin: the card rotation, tides),
+  `chatty_screen.py` display, `chatty_panels.py` (roll call, bolt/ripple, sunrise picture,
+  WiFi bars), `chatty_net.py` WiFi + MQTT + `get_json`, `chatty_news.py` / `chatty_cards.py` /
+  `chatty_tide.py` / `chatty_moon.py` / `chatty_clock.py` / `chatty_hub.py` pure Python
+  (tested on a computer), `chatty_art.py` icons, `chatty_bits.py` helpers. Keep each file
+  under about 15 KB (the board compiles each one in RAM).
+- Card library (2026-11-18): `cards` in secrets.py = order + seconds (clock, news, tide,
+  greenhouse, roll, sun); empty cards are skipped; a Tornado Warning beats everything. Tides
+  from NOAA CO-OPS (free, no key; `tide_station`, the board fetches every 6 h). The station
+  number lives only in secrets.py.
 - Tests: `python3 tests/test_matrix_node.py` (stand-ins in `sim/`, no packages). Pictures:
   `python3 scripts/preview_matrix.py out [fonts_dir]` (needs Pillow).

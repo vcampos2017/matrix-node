@@ -122,6 +122,8 @@ class Screen:
         for item in (self.pct, self.time, self.date, self.arrow, self.event):
             self.moon.append(item)
         self.root.append(self.moon)
+        self.roll = None            # chatty_panels.Roll adds its group
+        self.bits = None            # chatty_panels.ClockBits: sunrise picture, WiFi bars
 
         # a news card
         self.card = displayio.Group()
@@ -166,9 +168,13 @@ class Screen:
 
     # -- the clock
 
-    def show_clock(self, local, moon, twelve):
-        """local = clock.parts(...) or None; moon = dict from App.moon_now() or None."""
+    def show_clock(self, local, moon, twelve, sun=None, wifi=None):
+        """local = clock.parts(...) or None; moon = dict from App.moon_now() or None.
+        sun = {"next": "rise" | "set", "next_local": (h, m)}: show it on the moonrise
+        line this time. wifi = 0..4 bars, -1 = no WiFi, None = leave them off."""
         self.card.hidden = True
+        if self.roll:
+            self.roll.hidden = True
         self.frame.hidden = True
         self.moon.hidden = False
         risen = bool(moon and moon.get("next") == "set")
@@ -202,7 +208,17 @@ class Screen:
             self._set(self.pct, " ", 0, -99)
             for item in self.outline:
                 item.y = -99
-        if moon and moon.get("next_local"):
+        if self.bits:
+            self.bits.mini.hidden = True
+        if sun and sun.get("next_local") and self.bits:
+            hh, mm = sun["next_local"]
+            self.event.text = clock.hh_mm(hh, mm, twelve)
+            x = center_x - (self.event.bounding_box[2] + 6) // 2
+            color = self.bits.sun(sun["next"] == "rise", x, event_y - 3, self.level)
+            self.arrow.y = -99
+            self.event.x, self.event.y = x + 6, event_y
+            self.event.color = dim(color, self.level)
+        elif moon and moon.get("next_local"):
             hh, mm = moon["next_local"]
             text = clock.hh_mm(hh, mm, twelve)
             self.event.text = text
@@ -223,6 +239,8 @@ class Screen:
         self.date.x, self.date.y = center_x - self.date.bounding_box[2] // 2, time_y + 10
         self.time.color = self.date.color = dim(0x808080, max(self.level, 0.5))
         self.pct.color = dim(0xFFFF00, self.level)
+        if self.bits:
+            self.bits.wifi(wifi, moon_y, self.level)
 
     @staticmethod
     def _set(item, text, x, y):
@@ -258,6 +276,8 @@ class Screen:
     def show_card(self, card, urgent=False):
         """Lay out a card (from chatty_news). Returns the scroll width (0 = no scroll)."""
         self.moon.hidden = True
+        if self.roll:
+            self.roll.hidden = True
         self.card.hidden = False
         level = 1.0 if urgent else self.level
         color = dim(card["color"], level)
@@ -291,17 +311,24 @@ class Screen:
             self.icon.x, self.icon.y = (self.w - art.SIZE) // 2, top
             for i, text in enumerate(lines):
                 item = self.lines[i]
-                item.text, item.color = text, color if i == 0 else dim(0xFFFFFF, level * 0.9)
+                item.text, item.color = text, self._line_color(card, i, color, level)
                 item.x = (self.w - item.bounding_box[2]) // 2
                 item.y = top + art.SIZE + 3 + 5 + 11 * i
         else:
             self.icon.x, self.icon.y = 3, (self.h - art.SIZE) // 2
             for i, text in enumerate(lines):
                 item = self.lines[i]
-                item.text, item.color = text, color if i == 0 else dim(0xFFFFFF, level * 0.9)
+                item.text, item.color = text, self._line_color(card, i, color, level)
                 item.x = 14 + (50 - item.bounding_box[2]) // 2
                 item.y = 16 - (n - 1) * 5 + 10 * i
         return 0
+
+    @staticmethod
+    def _line_color(card, i, color, level):
+        colors = card.get("colors")
+        if colors and i < len(colors) and colors[i] is not None:
+            return dim(colors[i], level)
+        return color if i == 0 else dim(0xFFFFFF, level * 0.9)
 
     def step_scroll(self, width):
         """Move the scrolling line one pixel. False once it has gone by."""

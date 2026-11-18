@@ -1,4 +1,5 @@
-"""The moon, worked out on the board itself: phase, how much is lit, moonrise and moonset.
+"""The moon (and the sun), worked out on the board itself: phase, how much is lit,
+moonrise and moonset, sunrise and sunset.
 
 The original Moon Phase Clock asked a web service for this, which meant sending the
 location out and breaking whenever that service changed. This needs no internet at
@@ -20,6 +21,7 @@ RAD = math.pi / 180
 J2000 = 946728000          # 2000-01-01 12:00 UTC as epoch seconds
 OBLIQUITY = RAD * 23.4397
 RISE_ALT = 0.125 * RAD     # moon's centre at the horizon, after parallax and refraction
+SUN_RISE_ALT = -0.833 * RAD  # sun's top edge at the horizon, after refraction
 SUN_KM = 149598000
 
 
@@ -84,10 +86,9 @@ def illumination(utc):
     return phase, (1 + math.cos(inc)) / 2
 
 
-def altitude(utc, lat, lon):
-    """The moon's height above the horizon, radians (centre, geocentric)."""
+def _height(utc, lat, ra, dec, lon):
+    """Height above the horizon (radians) of something at (ra, dec)."""
     di, df = _days(utc)
-    ra, dec, _ = moon(utc)
     sidereal = _angle(280.16, 360.9856235, di, df, 0.9856235) + lon * RAD
     hour_angle = sidereal - ra
     phi = lat * RAD
@@ -95,14 +96,36 @@ def altitude(utc, lat, lon):
                      + math.cos(phi) * math.cos(dec) * math.cos(hour_angle))
 
 
+def altitude(utc, lat, lon):
+    """The moon's height above the horizon, radians (centre, geocentric)."""
+    ra, dec, _ = moon(utc)
+    return _height(utc, lat, ra, dec, lon)
+
+
+def sun_altitude(utc, lat, lon):
+    """The sun's height above the horizon, radians (centre)."""
+    ra, dec = sun(utc)
+    return _height(utc, lat, ra, dec, lon)
+
+
 def rise_set(day_start, lat, lon):
-    """(rise, set) as UTC epoch seconds within the 24 hours from day_start, each
+    """(moonrise, moonset) as UTC epoch seconds within the 24 hours from day_start, each
     None if it doesn't happen that day (the moon skips one rise and one set a month)."""
+    return _crossings(day_start, lambda t: altitude(t, lat, lon) - RISE_ALT)
+
+
+def sun_rise_set(day_start, lat, lon):
+    """(sunrise, sunset) as UTC epoch seconds within the 24 hours from day_start."""
+    return _crossings(day_start, lambda t: sun_altitude(t, lat, lon) - SUN_RISE_ALT)
+
+
+def _crossings(day_start, above):
+    """When above(t) goes from below zero to above (rise) and back (set) in 24 hours."""
     rise = sets = None
-    h0 = altitude(day_start, lat, lon) - RISE_ALT
+    h0 = above(day_start)
     for hour in range(1, 25, 2):
-        h1 = altitude(day_start + hour * 3600, lat, lon) - RISE_ALT
-        h2 = altitude(day_start + (hour + 1) * 3600, lat, lon) - RISE_ALT
+        h1 = above(day_start + hour * 3600)
+        h2 = above(day_start + (hour + 1) * 3600)
         # a parabola through the three points, looking for where it crosses zero
         a = (h0 + h2) / 2 - h1
         b = (h2 - h0) / 2

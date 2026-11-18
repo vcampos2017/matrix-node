@@ -1,17 +1,21 @@
 """The Matrix node: Chatty's moon clock and news panel on an Adafruit Matrix Portal M4.
 
 Home screen: the Moon Phase Clock (time, date, the moon's picture and how much of it
-is lit, and when it next rises or sets), now worked out on the board itself.
-Every NEWS_EVERY seconds it shows the node network's news as little cards: weather
-alerts, lightning, rain now or rain coming, the greenhouse, who's online. A Tornado
-Warning from Chatty turns the whole panel into a blinking TAKE COVER sign until the
-warning ends. A new lightning strike flashes the panel. While it rains, soft blue
-drops fall over the moon.
+is lit, and when it next rises or sets, taking turns with sunrise / sunset), now
+worked out on the board itself, with WiFi bars in the moon's corner.
+It rotates through a library of cards, each for its own number of seconds (the
+"cards" line in secrets.py, see chatty_cards.py): the clock, the network's news
+(weather alerts, lightning, rain now or coming), the tide, the greenhouse, a roll call
+of the nodes, sunrise and sunset. A Tornado Warning from Chatty beats all of them:
+the whole panel turns into a blinking TAKE COVER sign until the warning ends. A new
+lightning strike flashes the panel with a bolt, a rain gauge tip sends out a ripple,
+and while it rains soft blue drops fall over the moon.
 
 It joins the node network like the Pi nodes: a heartbeat on
 chatty/nodes/<node_name>/status every minute (last will: offline) and the moon on
-chatty/nodes/<node_name>/data, both retained. It only listens to the others and
-never sends anyone a command.
+chatty/nodes/<node_name>/data, both retained (with its WiFi signal, "rssi"). It
+only listens to the others and never sends anyone a command. The tide card asks
+NOAA's free tides service for one station's predictions every 6 hours.
 
 Buttons: UP = next card now. DOWN = back to the clock (and no cards for 2 minutes).
 
@@ -23,7 +27,9 @@ Settings, in secrets.py (or settings.toml with the same names in capitals):
     node_name              default "matrix"
     twelve_hour            default True
     night_start, night_end default 22 and 7: text dims at night
-    news_every             seconds of clock between news rounds, default 20
+    cards                  the card library's order and seconds (chatty_cards.py)
+    tide_station           NOAA tide station number (chatty_tide.py); tide_units
+    news_every             (older setting) seconds of clock when "cards" isn't set
 
 Based on MOON PHASE CLOCK for Adafruit Matrix Portal: displays current time, lunar
 phase and time of next moonrise or moonset.
@@ -39,11 +45,15 @@ import time
 import board
 from digitalio import DigitalInOut, Pull
 
+import chatty_cards as cardsmod
 import chatty_clock as clock
 import chatty_moon as moonmath
 import chatty_news as newsmod
+import chatty_tide as tide
 from chatty_bits import setting, flag, now_ms
+from chatty_library import Library
 from chatty_net import Net, Link
+from chatty_panels import ClockBits, Roll, Fx
 from chatty_screen import Screen, make_display, which_way_up, load_fonts
 
 FRAME_MS = 40              # about 25 frames a second
@@ -54,6 +64,8 @@ SYNC_EVERY_S = 6 * 3600
 SYNC_RETRY_S = 300
 NIGHT_LEVEL = 0.25
 QUIET_AFTER_DOWN_S = 120
+RSSI_EVERY_MS = 30000
+CLOCK_REDRAW_MS = 5000
 
 
 class Buttons:
@@ -78,7 +90,7 @@ class Buttons:
         return out
 
 
-class App:
+class App(Library):
     def __init__(self, display=None, net=None):
         self.name = str(setting("node_name", "matrix"))
         self.zone = str(setting("timezone", "UTC"))
@@ -92,7 +104,11 @@ class App:
             self.lat = self.lon = None
             print("No latitude/longitude in secrets.py: no moonrise/moonset times")
         self.night = (int(setting("night_start", 22)), int(setting("night_end", 7)))
-        self.news_every = int(setting("news_every", 20)) * 1000
+        self.deck = cardsmod.Deck(cardsmod.parse(setting("cards"), setting("news_every")))
+        self.station = tide.clean_station(setting("tide_station"))
+        self.tide_units = str(setting("tide_units", "english")).lower()
+        self.tides = []
+        self.next_tide = 0
         self.rotation = which_way_up() if display is None else 0
         self.display = display or make_display()
         try:
@@ -100,6 +116,9 @@ class App:
         except Exception:
             pass
         self.screen = Screen(self.display, self.rotation, load_fonts())
+        ClockBits(self.screen)
+        self.roll = Roll(self.screen)
+        self.fx = Fx(self.screen)
         self.news = newsmod.News(self.name)
         self.net = net or Net(setting("ssid"), setting("password"))
         self.link = Link(self.net, self.name, self._message)
@@ -111,10 +130,16 @@ class App:
         t = now_ms()
         self.mode = "clock"
         self.mode_since = t
+        self.until = t + 20000         # when the current card's time is up
+        self.entry = "clock"           # the library card showing (news can be several)
+        if self.deck.entries[0][0] == "clock":     # it starts on the clock: that's card 1
+            self.deck.i = 0
+            self.until = t + int(self.deck.entries[0][1] * 1000)
         self.queue = []
         self.card, self.scroll_w = None, 0
-        self.quiet_until = 0
         self.flash_left = 0
+        self.rssi, self.next_rssi = None, t
+        self.sun_turn = False
         self.next_wifi = self.next_mqtt = t
         self.wifi_gap = 15000
         self.mqtt_gap = 5000
@@ -124,6 +149,7 @@ class App:
         self.next_gc = t
         self.frame_no = 0
         self.rise_cache = {}
+        self.sun_cache = {}
         self.moon = None
 
     # -- time
@@ -175,40 +201,25 @@ class App:
 
     # -- network news
 
-    def _message(self, topic, text):
-        utc = self.utc()
-        for event in self.news.message(topic, text, utc, now_ms() // 1000):
-            if event[0] == "strike":
-                self.flash_left = 8
-                self._start_cards(only_first=True)
-
-    def _start_cards(self, only_first=False):
-        utc = self.utc()
-        cards = self.news.cards(utc, now_ms() // 1000, self.local_hm)
-        if only_first:
-            cards = [c for c in cards if c["icon"] == "bolt"][:1]
-        self.queue = cards
-        self._next_card()
-
-    def _next_card(self):
-        if not self.queue:
-            self.mode, self.mode_since = "clock", now_ms()
-            self.card = None
-            self.next_clock = 0
-            return
-        self.card = self.queue.pop(0)
-        self.mode, self.mode_since = "card", now_ms()
-        self.scroll_w = self.screen.show_card(self.card)
-
     def heartbeat(self):
         utc = self.utc()
         body = {"state": "online", "every": HEARTBEAT_S, "title": "Matrix clock",
-                "via": "lan", "screen": self.mode}
+                "via": "lan", "screen": self.entry if self.mode != "tornado" else "tornado"}
         if utc:
             body["ts"] = utc
+        if self.rssi is not None:
+            body["rssi"] = self.rssi
         if not self.link.publish(self.link.status_topic(), body):
             return
-        data = {"rotation": self.rotation, "screen": self.mode}
+        data = {"rotation": self.rotation, "screen": body["screen"]}
+        if self.rssi is not None:
+            data["wifi"] = {"rssi": self.rssi, "bars": cardsmod.bars(self.rssi)}
+        if self.tides and utc:
+            now_tide = tide.now(self.tides, utc)
+            if now_tide:
+                when, height, kind = now_tide["next"]
+                data["tide"] = {"next": "high" if kind == "H" else "low", "next_ts": when,
+                                "height": height, "rising": now_tide["rising"]}
         if utc:
             data["ts"] = utc
             moon = self.moon or self.moon_now(utc)
@@ -234,6 +245,11 @@ class App:
             return
         if t >= self.next_sync:
             self.sync()
+        if t >= self.next_rssi:
+            self.rssi = self.net.rssi()
+            self.next_rssi = t + RSSI_EVERY_MS
+        if self.station and self.utc() and t >= self.next_tide and self.mode != "tornado":
+            self.fetch_tides()
         if not self.link.client:
             if t >= self.next_mqtt:
                 if self.link.connect():
@@ -255,15 +271,13 @@ class App:
         t = now_ms()
         self.frame_no += 1
         for name in self.buttons.pressed():
+            if self.mode == "tornado":
+                continue
             if name == "BUTTON_UP":
-                if self.mode == "card" and self.queue:
-                    self._next_card()
-                else:
-                    self._start_cards()
+                self._advance()
             elif name == "BUTTON_DOWN":
                 self.queue = []
-                self._next_card()
-                self.quiet_until = t + QUIET_AFTER_DOWN_S * 1000
+                self._clock(QUIET_AFTER_DOWN_S)
         self.network(t)
         t = now_ms()
         utc = self.utc()
@@ -273,8 +287,11 @@ class App:
         tornado = self.news.tornado(utc, mono)
         if tornado:
             self.screen.tornado(True, (t // 500) % 2 == 0)
+            self.fx.stop()
+            self.flash_left = 0
             if self.mode != "tornado":
                 self.mode, self.mode_since = "tornado", t
+                self.queue = []
                 text = "Tornado warning"
                 ends = tornado.get("expires_ts")
                 if ends and utc:
@@ -290,34 +307,30 @@ class App:
                 self.screen.scroll.x = self.screen.w
         elif self.mode == "tornado":
             self.screen.tornado(False, False)
-            self.mode, self.mode_since = "clock", t
-            self.scroll_w, self.next_clock = 0, 0
+            self._clock(cardsmod.SECONDS["clock"])
 
         if self.flash_left > 0:
             self.screen.flash_on(self.flash_left in (8, 7, 4, 3))
             self.flash_left -= 1
+        self.fx.step()
 
         if self.mode == "card":
             if self.scroll_w:
                 if not self.screen.step_scroll(self.scroll_w):
                     self.scroll_w = 0
                     self._next_card()
-            elif t - self.mode_since >= self.card.get("seconds", 5) * 1000:
+            elif t >= self.until:
                 self._next_card()
+        elif self.mode == "roll":
+            if t >= self.until:
+                self._advance()
         elif self.mode == "clock":
-            if t >= self.next_clock and utc:
-                self.moon = self.moon_now(utc)
-                local = clock.parts(utc + clock.offset(self.zone, utc))
-                self.screen.show_clock(local, self.moon, self.twelve)
-                self.next_clock = t + 5000
-            elif t >= self.next_clock:
-                self.screen.show_clock(None, None, self.twelve)
-                self.next_clock = t + 5000
+            if t >= self.next_clock:
+                self.draw_clock(utc)
+                self.next_clock = t + CLOCK_REDRAW_MS
             self.screen.rain(self.news.raining(mono), self.frame_no % 3 == 0)
-            if t - self.mode_since >= self.news_every and t >= self.quiet_until:
-                self._start_cards()
-                if self.mode == "clock":
-                    self.mode_since = t       # nothing to show: another clock round
+            if t >= self.until:
+                self._advance()
         if self.mode != "clock":
             self.screen.rain(False, False)
         if t >= self.next_gc:
@@ -339,8 +352,7 @@ class App:
             self.hello("TIME")
             self.sync()
         self.next_clock = 0
-        self.mode_since = now_ms()
-        self.screen.show_clock(None, None, self.twelve)
+        self.until = now_ms() + int(self.deck.entries[max(self.deck.i, 0)][1] * 1000)
         while True:
             start = now_ms()
             try:

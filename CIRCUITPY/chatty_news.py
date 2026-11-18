@@ -9,7 +9,7 @@ The Matrix node listens (read-only, like every node) to:
     chatty/nodes/lightning/data   the lightning node (last_strike: ts, distance_mi)
     chatty/nodes/greenhouse/data  the greenhouse (air_temperature_f, soil_moisture_band)
 
-and turns them into cards: a small picture plus up to three words of five letters
+and turns them into cards (chatty_cards.py says which and for how long): a small picture plus up to three words of five letters
 or less (the panel stands on its side, 32 pixels wide), or one line of scrolling
 text for weather alerts. A Tornado Warning is not a card: tornado() says when the
 whole panel should turn into a red TAKE SHELTER sign.
@@ -99,7 +99,9 @@ class News:
     # ---------------------------------------------------------------- input
 
     def message(self, topic, text, utc, mono):
-        """Take one MQTT message. Returns events for the screen: [("strike", miles)]."""
+        """Take one MQTT message. Returns events for the screen:
+        [("strike", miles)] for a new lightning strike, [("tip", count)] when the
+        rain gauge tips."""
         try:
             body = json.loads(text) if text else {}
         except (ValueError, TypeError):
@@ -123,6 +125,7 @@ class News:
                 state = str(body.get("state", "online")).lower()
                 node = self.nodes.get(name) or {}
                 node.update({"online": state != "offline", "got": mono,
+                             "clean": state == "offline" and bool(body.get("clean")),
                              "every": _num(body.get("every")) or 60})
                 self.nodes[name] = node
             return []
@@ -140,11 +143,13 @@ class News:
     def _rain(self, body, mono):
         self.rain, self.rain_got = body, mono
         tips = _num(body.get("tip_count"))
+        events = []
         if tips is not None:
             if self.last_tips is not None and tips > self.last_tips:
                 self.last_tip_at = mono
+                events.append(("tip", tips))
             self.last_tips = tips
-        return []
+        return events
 
     def _lightning(self, body, utc, mono):
         self.lightning, self.lightning_got = body, mono
@@ -220,8 +225,8 @@ class News:
         return out
 
     def cards(self, utc, mono, local_hm):
-        """The cards to show between moon screens, most important first.
-        local_hm(utc) -> (hour, minute) in local time."""
+        """The news cards (the deck's "news"), most important first: weather alerts,
+        a lightning strike, rain now or rain coming. local_hm(utc) -> (hour, minute)."""
         out = []
         for a in self.active_alerts(utc, mono):
             if _is_tornado(a):
@@ -257,24 +262,44 @@ class News:
                     h, _ = local_hm(int(start))
                     lines.append(_short_hour(h))
                 out.append(_card("cloud" if word != "SNOW" else "snow", CYAN, lines))
-        if self._fresh(self.greenhouse_got, mono, READING_STALE):
-            temp = _num(self.greenhouse.get("air_temperature_f"))
-            band = soil_band(self.greenhouse)
-            lines = []
-            if temp is not None:
-                lines.append(str(int(temp + 0.5)) + "F")
-            if band:
-                lines.append({"dry": "DRY", "ok": "OK", "wet": "WET"}[band])
-            if lines:
-                color = ORANGE if band == "dry" else GREEN
-                out.append(_card("leaf", color, ["PLANT"] + lines if len(lines) < 3 else lines))
-        up, total = self.online(mono)
-        if total:
-            lines = ["NODES", str(up) + "/" + str(total)]
-            quiet = self.quiet_nodes(mono)
-            if quiet:
-                lines.append(short_name(quiet[0])[:4] + "?")
-            out.append(_card("nodes", GREEN if not quiet else AMBER, lines))
+        return out
+
+
+    def greenhouse_card(self, mono):
+        """Temperature and soil moisture from the greenhouse, or None."""
+        if not self._fresh(self.greenhouse_got, mono, READING_STALE):
+            return None
+        g = self.greenhouse
+        temp = _num(g.get("air_temperature_f"))
+        band = soil_band(g)
+        pct = _num(g.get("soil_moisture_percent"))
+        volts = _num(g.get("soil_voltage"))
+        if band is None or (volts is not None and volts < 0.05):
+            pct = None                         # unplugged probe: no made-up percent
+        lines = []
+        if temp is not None:
+            lines.append(str(int(temp + 0.5)) + "F")
+        if band:
+            lines.append({"dry": "DRY", "ok": "OK", "wet": "WET"}[band])
+        if pct is not None:
+            lines.append(str(int(max(0, min(pct, 100)) + 0.5)) + "%")
+        if not lines:
+            return None
+        if len(lines) < 3:
+            lines.insert(0, "PLANT")
+        return _card("leaf", ORANGE if band == "dry" else GREEN, lines)
+
+    def roll(self, mono):
+        """Roll call: [(short name, state), ...] for every other node heard from, state
+        "on", "rest" (said a proper goodbye: a reboot or shutdown) or "quiet"; quiet
+        ones first, then by name."""
+        quiet = self.quiet_nodes(mono)
+        out = []
+        for name in sorted(self.nodes, key=lambda n: (n not in quiet, n)):
+            state = "on"
+            if name in quiet:
+                state = "rest" if self.nodes[name].get("clean") else "quiet"
+            out.append((short_name(name), state))
         return out
 
 
