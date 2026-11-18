@@ -189,9 +189,7 @@ def main(out):
         n.message("chatty/nodes/%s/status" % name, json.dumps(
             {"state": state, "clean": name == "wordclock"}), now, 1)
     n.message("chatty/nodes/rain/status", json.dumps({"state": "offline"}), now, 1)
-    tides = tide.parse({"predictions": [
-        {"t": "2026-11-17 18:20", "v": "0.31", "type": "L"},
-        {"t": "2026-11-18 01:52", "v": "1.86", "type": "H"}]})
+    tides = tide.from_chatty({"events": [[now - 9900, 0.31, "L"], [now + 17220, 1.86, "H"]]})[0]
     n.message("chatty/alerts/active", json.dumps({"alerts": [
         {"event": "Severe Thunderstorm Warning", "kind": "urgent", "expires_ts": now + 2400}],
         "ts": now}), now, 1)

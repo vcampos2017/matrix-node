@@ -1,11 +1,13 @@
 """The Matrix node's card library at work: which card comes next, building each one,
-the moon clock's turns between moonrise and sunrise, the tide fetch, and what news
-from the network does to the screen (a strike's bolt, a rain gauge tip's ripple).
+the moon clock's turns between moonrise and sunrise, Chatty's clock and tides, and what
+news from the network does to the screen (a strike's bolt, a rain gauge tip's ripple).
 
 A mixin for chatty_matrix.App, kept in its own file so each one stays small enough
 for the board to compile. The order and seconds come from chatty_cards.py.
 """
 # pylint: disable=import-error,no-member
+import json
+
 import chatty_cards as cardsmod
 import chatty_clock as clock
 import chatty_moon as moonmath
@@ -43,6 +45,9 @@ class Library:
 
 
     def _message(self, topic, text):
+        if topic in ("chatty/clock", "chatty/tides"):
+            self._chatty_feed(topic, text)
+            return
         utc = self.utc()
         for event in self.news.message(topic, text, utc, now_ms() // 1000):
             if self.mode == "tornado":
@@ -59,6 +64,29 @@ class Library:
             elif event[0] == "tip":
                 self.fx.start("ripple")
 
+    def _chatty_feed(self, topic, text):
+        """Chatty's time (every minute) and tides (retained): the board can't fetch them."""
+        try:
+            body = json.loads(text)
+        except (ValueError, TypeError):
+            return
+        if topic == "chatty/clock":
+            try:
+                ts = int(body.get("ts"))
+            except (TypeError, ValueError, AttributeError):
+                return
+            # Chatty's clock unless the WiFi chip's time server set it in the last 6 hours
+            if ts > 1700000000 and (self.utc_base is None or self.clock_from != "wifi"):
+                if self.utc_base is None:
+                    print("Clock set from Chatty (UTC):", clock.parts(ts)[:6])
+                    self.next_clock = 0
+                self.utc_base, self.utc_at, self.clock_from = ts, now_ms(), "chatty"
+            return
+        events, units = tide.from_chatty(body)
+        if events:
+            self.tides, self.tide_units = events, units
+            print("Got", len(events), "tides from Chatty")
+
     # -- the card library
 
     def _make(self, name, seconds):
@@ -73,7 +101,7 @@ class Library:
                     card["seconds"] = seconds
             return cards or None
         if name == "tide":
-            if not self.station or not utc:
+            if not self.tides or not utc:
                 return None
             return tide.card(self.tides, utc, self.local_hm, self.tide_units, seconds)
         if name == "greenhouse":
@@ -124,19 +152,6 @@ class Library:
         self.mode, self.mode_since = "card", t
         self.until = t + int(self.card.get("seconds", 5) * 1000)
         self.scroll_w = self.screen.show_card(self.card)
-
-
-    def fetch_tides(self):
-        utc = self.utc()
-        print("Asking NOAA for tides at station", self.station)
-        events = tide.parse(self.net.get_json(tide.url(self.station, utc, self.tide_units)))
-        if events:
-            self.tides = events
-            self.next_tide = now_ms() + tide.FETCH_EVERY * 1000
-            print("Got", len(events), "tides")
-        else:
-            print("No tide predictions this time")
-            self.next_tide = now_ms() + tide.RETRY_AFTER * 1000
 
 
     def draw_clock(self, utc):

@@ -14,8 +14,9 @@ and while it rains soft blue drops fall over the moon.
 It joins the node network like the Pi nodes: a heartbeat on
 chatty/nodes/<node_name>/status every minute (last will: offline) and the moon on
 chatty/nodes/<node_name>/data, both retained (with its WiFi signal, "rssi"). It
-only listens to the others and never sends anyone a command. The tide card asks
-NOAA's free tides service for one station's predictions every 6 hours.
+only listens to the others and never sends anyone a command. It makes no web
+requests (no room for the web library next to MQTT): Chatty posts the tides
+(chatty/tides) and the time (chatty/clock) for it.
 
 Buttons: UP = next card now. DOWN = back to the clock (and no cards for 2 minutes).
 
@@ -28,7 +29,6 @@ Settings, in secrets.py (or settings.toml with the same names in capitals):
     twelve_hour            default True
     night_start, night_end default 22 and 7: text dims at night
     cards                  the card library's order and seconds (chatty_cards.py)
-    tide_station           NOAA tide station number (chatty_tide.py); tide_units
     news_every             (older setting) seconds of clock when "cards" isn't set
 
 Based on MOON PHASE CLOCK for Adafruit Matrix Portal: displays current time, lunar
@@ -56,10 +56,9 @@ import chatty_cards as cardsmod
 import chatty_clock as clock
 import chatty_moon as moonmath
 import chatty_news as newsmod
-import chatty_tide as tide
 from chatty_bits import setting, flag, now_ms
 from chatty_library import Library
-from chatty_net import Net, Link
+from chatty_net import Net, Link, free
 from chatty_panels import ClockBits, Roll, Fx
 from chatty_screen import Screen, make_display, which_way_up, load_fonts
 
@@ -68,7 +67,7 @@ HEARTBEAT_S = 60
 MQTT_EVERY_MS = 1000       # how often to check for messages
 MQTT_EVERY_SCROLLING_MS = 4000
 SYNC_EVERY_S = 6 * 3600
-SYNC_RETRY_S = 300
+SYNC_RETRY_S = 1800
 NIGHT_LEVEL = 0.25
 QUIET_AFTER_DOWN_S = 120
 RSSI_EVERY_MS = 30000
@@ -112,10 +111,8 @@ class App(Library):
             print("No latitude/longitude in secrets.py: no moonrise/moonset times")
         self.night = (int(setting("night_start", 22)), int(setting("night_end", 7)))
         self.deck = cardsmod.Deck(cardsmod.parse(setting("cards"), setting("news_every")))
-        self.station = tide.clean_station(setting("tide_station"))
-        self.tide_units = str(setting("tide_units", "english")).lower()
-        self.tides = []
-        self.next_tide = 0
+        self.tide_units = "english"
+        self.tides = []                 # from Chatty's chatty/tides
         self.rotation = which_way_up() if display is None else 0
         self.display = display or make_display()
         try:
@@ -133,6 +130,7 @@ class App(Library):
         self.buttons = Buttons()
         # time
         self.utc_base, self.utc_at = None, 0
+        self.clock_from = None          # "wifi" (its time server) or "chatty" (chatty/clock)
         self.next_sync = 0
         # schedule
         t = now_ms()
@@ -174,12 +172,14 @@ class App(Library):
     def sync(self):
         t = self.net.utc_now()
         if t:
-            self.utc_base, self.utc_at = t, now_ms()
+            self.utc_base, self.utc_at, self.clock_from = t, now_ms(), "wifi"
             self.next_sync = now_ms() + SYNC_EVERY_S * 1000
             print("Clock set (UTC):", clock.parts(t)[:6])
             self.next_clock = 0
             return True
         self.next_sync = now_ms() + SYNC_RETRY_S * 1000
+        if self.clock_from == "wifi":
+            self.clock_from = None          # old now: Chatty's clock may correct it
         return False
 
     def moon_now(self, utc):
@@ -222,12 +222,6 @@ class App(Library):
         data = {"rotation": self.rotation, "screen": body["screen"]}
         if self.rssi is not None:
             data["wifi"] = {"rssi": self.rssi, "bars": cardsmod.bars(self.rssi)}
-        if self.tides and utc:
-            now_tide = tide.now(self.tides, utc)
-            if now_tide:
-                when, height, kind = now_tide["next"]
-                data["tide"] = {"next": "high" if kind == "H" else "low", "next_ts": when,
-                                "height": height, "rising": now_tide["rising"]}
         if utc:
             data["ts"] = utc
             moon = self.moon or self.moon_now(utc)
@@ -261,7 +255,6 @@ class App(Library):
                 if self.link.connect():
                     self.mqtt_gap = 5000
                     self.next_beat = 0
-                    self.next_tide = max(self.next_tide, now_ms() + 30000)
                 else:
                     self.mqtt_gap = min(self.mqtt_gap * 2, 120000)
                 self.next_mqtt = now_ms() + self.mqtt_gap
@@ -273,10 +266,6 @@ class App(Library):
         if t >= self.next_beat:
             self.heartbeat()
             self.next_beat = now_ms() + HEARTBEAT_S * 1000
-        # tides only once Chatty's board is connected (MQTT comes first for memory), and
-        # never during a Tornado Warning
-        elif self.station and self.utc() and t >= self.next_tide and self.mode != "tornado":
-            self.fetch_tides()
 
     def step(self):
         t = now_ms()
@@ -354,11 +343,13 @@ class App(Library):
                                "lines": ["HI!", word], "scroll": None, "seconds": 0})
 
     def run(self):
+        print("Free memory at start:", free())
         self.hello("WIFI")
         try:
             self.net.setup()
         except Exception as ex:
             print("WiFi chip:", repr(ex))
+        print("Free memory with the WiFi chip:", free())
         if self.net.connect():
             self.hello("TIME")
             self.sync()

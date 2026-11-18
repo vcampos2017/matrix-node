@@ -6,7 +6,6 @@ Works with the older libraries (adafruit_esp32spi sockets) and the newer ones
 # pylint: disable=import-error,broad-except
 import gc
 import json
-import sys
 import time
 
 import board
@@ -14,13 +13,12 @@ import busio
 import microcontroller
 from digitalio import DigitalInOut
 
-import chatty_clock as clock
 import chatty_hub as hub
 from chatty_bits import setting, now_ms
 
 MQTT_LOOP_S = 0.25
 HUB_SAVE_GAP_S = 600
-TOPICS = ("chatty/hub", "chatty/alerts/active", "chatty/forecast/rain",
+TOPICS = ("chatty/hub", "chatty/clock", "chatty/tides", "chatty/alerts/active", "chatty/forecast/rain",
           "chatty/nodes/+/status", "chatty/nodes/rain/data",
           "chatty/nodes/lightning/data", "chatty/nodes/greenhouse/data")
 
@@ -74,19 +72,21 @@ class Net:
             return None, None
 
     def utc_now(self):
-        """UTC from the internet (the WiFi chip's own time server first), or None."""
-        # The WiFi chip says 0 until it has heard from its time server, which can take a
-        # few seconds: wait for it rather than load the web library (it costs memory).
-        for _ in range(8):
+        """UTC from the WiFi chip's own time server, or None."""
+        # The WiFi chip says 0 until it has heard from its time server. No web fallback
+        # (the web library doesn't fit next to MQTT): Chatty posts the time on
+        # chatty/clock every minute, and that sets the clock too.
+        for _ in range(2):
             try:
                 t = self.esp.get_time()
                 t = t[0] if isinstance(t, (tuple, list)) else t
                 if int(t) > 1700000000:
                     return int(t)
-            except Exception as ex:
-                print("Time server:", repr(ex))
-            time.sleep(1.5)
-        return self._http_time()
+            except Exception:
+                pass
+            time.sleep(0.5)
+        print("No time from the WiFi chip yet; waiting for Chatty's clock")
+        return None
 
     def rssi(self):
         """WiFi signal strength in dBm (about -30 great .. -90 barely), or None.
@@ -103,56 +103,6 @@ class Net:
             except Exception:
                 pass
         return None
-
-    def _session(self):
-        pool, ssl = self.pool()
-        import adafruit_requests
-        if pool is not None:
-            return adafruit_requests.Session(pool, ssl)
-        import adafruit_esp32spi.adafruit_esp32spi_socket as sock
-        adafruit_requests.set_socket(sock, self.esp)
-        return adafruit_requests
-
-    def _forget_web(self):
-        """Unload the web library: the board's memory is small and MQTT needs it more
-        (it's loaded again for the next fetch). The MQTT socket is left alone."""
-        sys.modules.pop("adafruit_requests", None)
-        gc.collect()
-
-    def get_json(self, url):
-        """A web page's JSON (a dict), or None. Takes a few seconds; the panel waits."""
-        resp = None
-        gc.collect()
-        try:
-            resp = self._session().get(url, headers={"Connection": "close"}, timeout=15)
-            if resp.status_code != 200:
-                print("Web page answered", resp.status_code)
-                return None
-            return resp.json()
-        except Exception as ex:
-            print("Web page:", repr(ex))
-            return None
-        finally:
-            try:
-                if resp:
-                    resp.close()
-            except Exception:
-                pass
-            resp = None
-            self._forget_web()
-
-    def _http_time(self):
-        try:
-            session = self._session()
-            resp = session.get("http://time.akamai.com/?iso")
-            text = resp.text
-            resp.close()
-            return clock.parse_iso_utc(text)
-        except Exception as ex:
-            print("Web time:", repr(ex))
-            return None
-        finally:
-            self._forget_web()
 
 
 def free():

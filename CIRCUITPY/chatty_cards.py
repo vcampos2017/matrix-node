@@ -7,7 +7,7 @@ The order lives in secrets.py as one line, each card with its seconds:
     clock        the moon clock (time, date, moon, moonrise/set and sunrise/set taking turns)
     news         what's new on the network: weather alerts (scrolling), a lightning strike,
                  rain now or rain coming. Each news card gets the seconds given here.
-    tide         the next high or low tide, rising or falling (needs "tide_station")
+    tide         the next high or low tide, rising or falling (from Chatty: CHATTY_TIDE_STATION)
     greenhouse   temperature and soil moisture from the greenhouse node
     roll         roll call: a green or red dot for every node on the network
     sun          today's sunrise and sunset and the day's length (needs latitude/longitude)

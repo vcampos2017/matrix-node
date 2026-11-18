@@ -14,7 +14,10 @@ A moon clock that is also a node on Chatty's network.
   - `news`: weather alerts (scrolling), a lightning strike (miles, minutes ago), rain now
     (and the total) or rain coming (chance and hour).
   - `tide`: the next high or low tide, its time and height, with a rising or falling arrow,
-    from NOAA's free tides service (`tide_station` in secrets.py; `chatty_tide.py`).
+    from NOAA's free tides service. Chatty fetches them on her Pi (`CHATTY_TIDE_STATION`
+    in her settings, chatty-node `node_feed.py`) and posts them on `chatty/tides`: the
+    board makes no web requests, the web library doesn't fit next to MQTT. Its clock
+    comes from the WiFi chip's time server, or from Chatty's `chatty/clock`.
   - `greenhouse`: temperature, dry / ok / wet, and the soil moisture percent.
   - `roll`: roll call, a dot per node: green online, red quiet, amber said a proper
     goodbye (reboot or shutdown) and isn't back yet.
@@ -45,7 +48,7 @@ board's small memory), then `mqtt_hosts` from secrets.py, then `chatty-node`.
 | `chatty_cards.py` | the card line from secrets.py, WiFi bars, the sun card (tested) |
 | `chatty_screen.py` | the clock layout, cards, tornado frame, flash, rain |
 | `chatty_panels.py` | roll call, the bolt and ripple, sunrise picture, WiFi bars |
-| `chatty_tide.py` | NOAA tide predictions -> the tide card (tested) |
+| `chatty_tide.py` | Chatty's tide news -> the tide card (tested) |
 | `chatty_net.py` | WiFi (ESP32) and MQTT, old or new Adafruit libraries |
 | `chatty_news.py` | MQTT news -> cards (tested on a computer) |
 | `chatty_moon.py` | moon phase, moonrise, moonset, sunrise, sunset (tested) |
@@ -80,6 +83,6 @@ Moon Phase Clock by Phil 'PaintYourDragon' Burgess for Adafruit Industries, MIT 
    `secrets_example.py`. Keep the `fonts` and `moon` folders that are already there.
 4. Add `timezone` and `mqtt_hosts` (Chatty's home address) to `secrets.py`, like
    `secrets_example.py`. Latitude and longitude are optional (moonrise / moonset, sunrise /
-   sunset). `cards` and `tide_station` are optional too.
+   sunset). `cards` is optional too.
 
 Check it from Chatty's Pi: `mosquitto_sub -h localhost -t 'chatty/nodes/matrix/#' -v`

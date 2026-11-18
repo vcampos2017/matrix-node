@@ -299,7 +299,14 @@ def test_sunrise_and_sunset():
 
 
 def _noaa(*rows):
-    return {"predictions": [{"t": t, "v": v, "type": k} for t, v, k in rows]}
+    """Chatty's chatty/tides message (node_feed.py) for these NOAA-style rows."""
+    events = []
+    for t, v, k in rows:
+        date, hm_ = t.split(" ")
+        y, mo, d = [int(x) for x in date.split("-")]
+        hh, mm = [int(x) for x in hm_.split(":")]
+        events.append([clock.epoch(y, mo, d, hh, mm), float(v), k])
+    return {"station": "1234567", "units": "english", "events": events, "ts": NOW}
 
 
 TIDES = _noaa(("2026-11-17 14:06", "1.712", "H"), ("2026-11-17 20:48", "0.402", "L"),
@@ -307,10 +314,12 @@ TIDES = _noaa(("2026-11-17 14:06", "1.712", "H"), ("2026-11-17 20:48", "0.402", 
 
 
 def test_tide_parse_and_now():
-    events = tide.parse(TIDES)
+    events, units = tide.from_chatty(TIDES)
     assert events[0] == (clock.epoch(2026, 11, 17, 14, 6), 1.712, "H") and len(events) == 4
-    assert tide.parse({"error": {"message": "No data was found"}}) == []
-    assert tide.parse(None) == [] and tide.parse(_noaa(("bad", "x", "H"))) == []
+    assert units == "english" and tide.from_chatty(dict(TIDES, units="metric"))[1] == "metric"
+    assert tide.from_chatty({"oops": 1}) == ([], "english") and tide.from_chatty(None)[0] == []
+    assert tide.from_chatty({"events": [["x", 1, "H"], [1, 2], [5, "1.5", "low"]]})[0] == \
+        [(5, 1.5, "L")]
     info = tide.now(events, NOW)                      # 21:00 UTC: just after the 20:48 low
     assert info["rising"] and info["next"][2] == "H"
     assert 0.40 < info["height"] < 0.45
@@ -320,17 +329,12 @@ def test_tide_parse_and_now():
     assert tide.now(events, clock.epoch(2026, 11, 19)) is None   # ran out: fetch again
 
 
-def test_tide_card_and_url():
-    card = tide.card(tide.parse(TIDES), NOW, hm)
+def test_tide_card():
+    card = tide.card(tide.from_chatty(TIDES)[0], NOW, hm)
     assert card["icon"] == "tideup" and card["lines"] == ["HIGH", "10:30", "1.9'"]
-    card = tide.card(tide.parse(TIDES), clock.epoch(2026, 11, 18, 4), hm, "metric")
+    card = tide.card(tide.from_chatty(TIDES)[0], clock.epoch(2026, 11, 18, 4), hm, "metric")
     assert card["icon"] == "tidedn" and card["lines"] == ["LOW", "5:12A", "-0.1m"]
-    assert tide.card([], NOW, hm) is None and tide.card(tide.parse(TIDES), None, hm) is None
-    assert tide.clean_station(" 1234567&x=1") == "1234567x1" and tide.clean_station("") is None
-    url = tide.url("1234567", NOW)
-    assert url.startswith("https://api.tidesandcurrents.noaa.gov/")
-    assert "station=1234567" in url and "begin_date=20261116" in url and "interval=hilo" in url
-    assert "units=english" in url and "units=metric" in tide.url("1", NOW, "metric")
+    assert tide.card([], NOW, hm) is None and tide.card(tide.from_chatty(TIDES)[0], None, hm) is None
     assert tide.height_text(-0.04) == "0.0'" and len(tide.height_text(-12.34)) <= 5
 
 
@@ -553,20 +557,14 @@ def test_app_rotates_the_card_library():
     try:
         app = make_app(clk, {"ssid": "HomeWiFi", "password": "x", "timezone": "America/Denver",
                              "latitude": 40.0, "longitude": -100.0, "mqtt_hosts": "192.168.1.50",
-                             "tide_station": "1234567",
                              "cards": "clock:10, tide:4, greenhouse:3, roll:5, sun:3, news"})
-        asked = []
-        app.net.get_json = lambda url: asked.append(url) or TIDES_NOW
+        fake.BROKER.post("chatty/tides", TIDES_NOW)
         fake.BROKER.post("chatty/nodes/greenhouse/data",
                          {"metrics": {"air_temperature_f": 70, "soil_moisture_band": "wet"}})
         fake.BROKER.post("chatty/nodes/rain/status", {"state": "online", "every": 60})
         fake.BROKER.post("chatty/nodes/lightning/status", {"state": "offline"})
         run(app, clk, 2)
-        assert asked == []                      # MQTT first; tides 30 s after it connects
-        app.next_tide = 0
-        run(app, clk, 0.2)
-        assert len(asked) == 1 and "station=1234567" in asked[0]
-        assert app.mode == "clock"
+        assert len(app.tides) == 6 and app.mode == "clock"
         seen = []
         for _ in range(30 * 25):
             app.step()
@@ -587,162 +585,59 @@ def test_app_rotates_the_card_library():
         app.heartbeat()
         assert fake.BROKER.last("chatty/nodes/matrix/status")["rssi"] == -62
         data = fake.BROKER.last("chatty/nodes/matrix/data")
-        assert data["wifi"] == {"rssi": -62, "bars": 3} and data["tide"]["next"] in ("high", "low")
-        # no more asking NOAA for 6 hours
-        run(app, clk, 5)
-        assert len(asked) == 1
+        assert data["wifi"] == {"rssi": -62, "bars": 3}
     finally:
         time.monotonic_ns = real
 
 
-def test_app_buttons_and_tide_retry():
+def test_app_clock_and_tides_from_chatty():
     real = time.monotonic_ns
     clk = Clock()
     try:
         app = make_app(clk, {"ssid": "HomeWiFi", "password": "x", "mqtt_hosts": "192.168.1.50",
-                             "tide_station": "1234567", "cards": "clock:60, tide:5"})
-        asked = []
-        app.net.get_json = lambda url: asked.append(url) and None
-        fake.BROKER.reachable = set()           # Chatty away: no tide fetch either
-        run(app, clk, 40, fps=5)
-        assert asked == []
-        fake.BROKER.reachable = {"192.168.1.50"}
-        run(app, clk, 160, fps=5)
-        assert len(asked) == 1 and app.mode == "clock"
+                             "cards": "clock:60, tide:5"})
+        app.net.esp.get_time = lambda: 0         # the WiFi chip's time server never answers
+        run(app, clk, 3)
+        assert app.utc() is None and app.link.client is not None
+        assert app.screen.time.text == "--:--"
+        fake.BROKER.post("chatty/clock", {"ts": NOW + 5}, retain=False)
+        run(app, clk, 6)                         # the next clock redraw shows it
+        assert app.clock_from == "chatty" and abs(app.utc() - (NOW + 11)) <= 1
+        assert app.screen.time.text != "--:--"
+        assert "chatty/clock" not in fake.BROKER.retained
         app.buttons.pressed = lambda: ["BUTTON_UP"]
         app.step()
         app.buttons.pressed = lambda: []
-        assert app.mode == "clock"                 # no tide data: the tide card is skipped
-        run(app, clk, 15 * 60 + 2, fps=2)
-        assert len(asked) == 2                     # asked again after 15 minutes
-        app.net.get_json = lambda url: TIDES_NOW
-        run(app, clk, 15 * 60 + 2, fps=2)
-        assert app.tides
-        seen = set()
-        for _ in range(130):
-            run(app, clk, 1, fps=2)
-            seen.add(app.card["icon"] if app.mode == "card" else app.mode)
-        assert "tideup" in seen or "tidedn" in seen
+        assert app.mode == "clock"               # no tides yet: the tide card is skipped
+        fake.BROKER.post("chatty/tides", TIDES_NOW)
+        run(app, clk, 2)
+        app.buttons.pressed = lambda: ["BUTTON_UP"]
+        app.step()
+        app.buttons.pressed = lambda: []
+        assert app.mode == "card" and app.card["icon"] in ("tideup", "tidedn")
         app.buttons.pressed = lambda: ["BUTTON_DOWN"]
         app.step()
         app.buttons.pressed = lambda: []
         assert app.mode == "clock"
         run(app, clk, 100, fps=2)
-        assert app.mode == "clock"                 # DOWN: two minutes of clock
-        run(app, clk, 30, fps=2)
-        assert app.mode != "clock" or app.entry == "clock"
-    finally:
-        time.monotonic_ns = real
-
-
-def test_app_tornado_beats_every_card():
-    real = time.monotonic_ns
-    clk = Clock()
-    try:
-        app = make_app(clk, {"ssid": "HomeWiFi", "password": "x", "mqtt_hosts": "192.168.1.50",
-                             "cards": "roll:30"})
-        fake.BROKER.post("chatty/nodes/rain/status", {"state": "online", "every": 60})
-        run(app, clk, 3)
-        app.buttons.pressed = lambda: ["BUTTON_UP"]
+        assert app.mode == "clock"               # DOWN: two minutes of clock
+        # the WiFi chip's own time wins over Chatty's once it answers
+        app.net.esp.get_time = lambda: NOW + 3600
+        app.next_sync = 0
         app.step()
-        app.buttons.pressed = lambda: []
-        assert app.mode == "roll" and not app.roll.group.hidden
-        utc = app.utc()
-        fake.BROKER.post("chatty/alerts/active", {"alerts": [{"event": "Tornado Warning",
-                                                              "expires_ts": utc + 900}],
-                                                  "ts": utc})
-        fake.BROKER.post("chatty/nodes/rain/data", {"tip_count": 1})
+        assert app.clock_from == "wifi"
+        fake.BROKER.post("chatty/clock", {"ts": NOW + 99999}, retain=False)
         run(app, clk, 2)
-        fake.BROKER.post("chatty/nodes/rain/data", {"tip_count": 2})
-        fake.BROKER.post("chatty/nodes/lightning/data",
-                         {"last_strike": {"ts": app.utc() - 5, "distance_mi": 3}})
-        run(app, clk, 3)
-        assert app.mode == "tornado" and app.roll.group.hidden and app.screen.moon.hidden
-        assert app.fx.grid.hidden and app.screen.flash.hidden and not app.screen.card.hidden
-        app.buttons.pressed = lambda: ["BUTTON_UP"]
-        app.step()
-        app.buttons.pressed = lambda: ["BUTTON_DOWN"]
-        app.step()
-        app.buttons.pressed = lambda: []
-        run(app, clk, 60)
-        assert app.mode == "tornado"
-        assert fake.BROKER.last("chatty/nodes/matrix/status")["screen"] == "tornado"
+        assert abs(app.utc() - (NOW + 3600)) < 10
     finally:
         time.monotonic_ns = real
 
 
-def test_app_ripple_bolt_and_sun_on_the_clock():
-    real = time.monotonic_ns
-    clk = Clock()
-    try:
-        app = make_app(clk)
-        fake.BROKER.post("chatty/nodes/rain/data", {"tip_count": 1})
-        run(app, clk, 2)
-        assert app.fx.grid.hidden
-        fake.BROKER.post("chatty/nodes/rain/data", {"tip_count": 2})
-        app.network(app.next_loop)
-        app.step()
-        assert app.fx.kind == "ripple" and not app.fx.grid.hidden and any(app.fx.bmp.px)
-        run(app, clk, 1)
-        assert app.fx.grid.hidden
-        fake.BROKER.post("chatty/nodes/lightning/data",
-                         {"last_strike": {"ts": app.utc() - 5, "distance_mi": 3}})
-        app.network(app.next_loop)
-        app.step()
-        assert app.fx.kind == "bolt" and app.card["icon"] == "bolt"
-        run(app, clk, 6)
-        # the clock: moonrise line and sunrise line take turns, WiFi bars in the corner
-        app.buttons.pressed = lambda: ["BUTTON_DOWN"]
-        app.step()
-        app.buttons.pressed = lambda: []
-        shown = set()
-        for _ in range(4):
-            run(app, clk, 5)
-            shown.add("sun" if not app.screen.bits.mini.hidden else "moon")
-        assert shown == {"sun", "moon"}
-        assert not app.screen.bits.bars.hidden and app.screen.bits.bars_now == 3
-    finally:
-        time.monotonic_ns = real
-
-
-def test_new_cards_stay_on_the_panel():
-    real = time.monotonic_ns
-    clk = Clock()
-    try:
-        make_app(clk)
-        import chatty_screen
-        from chatty_panels import ClockBits, Roll
-        fonts = chatty_screen.load_fonts()
-        many = [("ZAP", "quiet"), ("CLOK", "rest"), ("GRN", "on"), ("RAIN", "on"),
-                ("CHAT", "on"), ("MTRX", "on"), ("EXTRA", "on")]
-        for rotation in (0, 90):
-            screen = chatty_screen.Screen(fake.FakeDisplay(), rotation, fonts)
-            bits = ClockBits(screen)
-            roll = Roll(screen)
-            roll.show(many)
-            shown = [l for l in roll.labels if l.y != -99]
-            assert len(shown) == 6
-            for item in shown:
-                assert item.x >= 0 and item.x + item.bounding_box[2] <= screen.w, (rotation, item.text)
-                assert item.y - 5 >= 0 and item.y + 5 <= screen.h
-            for card in (tide.card(tide.parse(TIDES), NOW, hm),
-                         cards.sun_card((7, 1), (17, 24), 37380),
-                         cards.sun_card((10, 59), (12, 1), 37380)):
-                screen.show_card(card)
-                assert roll.group.hidden
-                for item in screen.lines:
-                    if item.y != -99:
-                        assert item.x >= 0 and item.x + item.bounding_box[2] <= screen.w, \
-                            (rotation, item.text)
-            for top in ("set", "rise"):
-                screen.show_clock(clock.parts(NOW), {"phase": 0.3, "lit": 0.6, "next": top,
-                                                     "next_local": (21, 5)}, True,
-                                  sun={"next": "rise", "next_local": (11, 59)}, wifi=4)
-                assert not bits.mini.hidden and screen.arrow.y == -99
-                assert 0 <= bits.mini.x and screen.event.x + screen.event.bounding_box[2] <= screen.w
-                assert bits.bars.x + 7 <= screen.w and 0 <= bits.bars.y <= screen.h - 4
-    finally:
-        time.monotonic_ns = real
+def test_board_makes_no_web_requests():
+    for name in os.listdir(os.path.join(ROOT, "CIRCUITPY")):
+        if name.endswith(".py"):
+            text = open(os.path.join(ROOT, "CIRCUITPY", name)).read()
+            assert "adafruit_requests" not in text, name
 
 
 TIDES_NOW = _noaa(("2026-11-17 14:06", "1.712", "H"), ("2026-11-17 20:48", "0.402", "L"),

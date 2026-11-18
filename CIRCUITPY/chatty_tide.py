@@ -1,14 +1,10 @@
 """Tides for the Matrix node: the next high or low tide, and whether it's rising or falling.
 
-The predictions come from NOAA's free CO-OPS tides API (no key, no account):
-https://api.tidesandcurrents.noaa.gov . The board asks for three days of high and low
-tides for one station every 6 hours, so it keeps working through a day or two without
-internet. Only the station number is sent; the board's location never is.
-
-Settings (secrets.py):
-    tide_station   the NOAA station number (find one at tidesandcurrents.noaa.gov, the
-                   7 digits in the station page's address). No station = no tide card.
-    tide_units     "english" (feet, default) or "metric" (meters)
+The predictions come from NOAA's free CO-OPS tides service, fetched by Chatty on her Pi
+(chatty-node src/node_feed.py; the station is CHATTY_TIDE_STATION in her settings) and
+posted retained on MQTT as chatty/tides: three days of high and low tides, so the card
+keeps working through a day or two without news. The board itself does no web requests:
+the web library doesn't fit in its memory next to MQTT.
 
 Pure Python, no hardware: tested on a computer.
 """
@@ -16,47 +12,23 @@ import math
 
 import chatty_clock as clock
 
-API = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter"
-FETCH_EVERY = 6 * 3600
-RETRY_AFTER = 15 * 60
 MAX_EVENTS = 16
 
 
-def clean_station(text):
-    """Digits and letters only (it goes in a web address)."""
-    out = "".join(ch for ch in str(text or "") if ch.isalpha() or ch.isdigit())
-    return out[:12] or None
-
-
-def url(station, utc, units="english"):
-    """The web address for 72 hours of high/low predictions, starting yesterday (UTC)."""
-    y, m, d = clock.parts(utc - 86400)[:3]
-    return (API + "?product=predictions&application=chatty_matrix_node"
-            + "&begin_date=" + "{:04d}{:02d}{:02d}".format(y, m, d) + "&range=72"
-            + "&datum=MLLW&station=" + station + "&time_zone=gmt"
-            + "&units=" + ("metric" if units == "metric" else "english")
-            + "&interval=hilo&format=json")
-
-
-def parse(body):
-    """NOAA's answer -> [(utc, height, 'H' or 'L'), ...] oldest first ([] if it's an error)."""
-    if not isinstance(body, dict) or not isinstance(body.get("predictions"), list):
-        return []
+def from_chatty(body):
+    """Chatty's chatty/tides message -> ([(utc, height, 'H' or 'L'), ...], units)."""
+    if not isinstance(body, dict) or not isinstance(body.get("events"), list):
+        return [], "english"
     out = []
-    for item in body["predictions"]:
+    for item in body["events"][:MAX_EVENTS]:
         try:
-            t = str(item["t"])                     # "2026-11-18 03:12" (UTC)
-            date, hm = t.split(" ")
-            y, mo, d = [int(x) for x in date.split("-")]
-            hh, mm = [int(x) for x in hm.split(":")[:2]]
-            kind = str(item.get("type", "")).upper()[:1]
-            if kind not in ("H", "L"):
-                continue
-            out.append((clock.epoch(y, mo, d, hh, mm), float(item["v"]), kind))
-        except (KeyError, ValueError, TypeError, AttributeError):
+            kind = str(item[2]).upper()[:1]
+            if kind in ("H", "L"):
+                out.append((int(item[0]), float(item[1]), kind))
+        except (IndexError, ValueError, TypeError):
             continue
     out.sort()
-    return out[:MAX_EVENTS]
+    return out, ("metric" if body.get("units") == "metric" else "english")
 
 
 def now(events, utc):
