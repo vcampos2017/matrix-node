@@ -180,6 +180,7 @@ class FakeESP:
     def __init__(self, utc):
         self.utc = utc
         self.is_connected = False
+        self.rssi = -62
 
     def connect_AP(self, ssid, password, *a, **k):
         self.is_connected = True
@@ -245,6 +246,6 @@ def install(secrets=None, clock_offset=0.0):
     if secrets is not None:
         sm["secrets"] = types.ModuleType("secrets")
         sm["secrets"].secrets = dict(secrets)
-    for name in ("chatty_bits", "chatty_net", "chatty_screen", "chatty_matrix"):
+    for name in ("chatty_bits", "chatty_net", "chatty_screen", "chatty_panels", "chatty_matrix"):
         sm.pop(name, None)
     return mods

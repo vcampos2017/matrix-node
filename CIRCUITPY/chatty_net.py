@@ -85,16 +85,48 @@ class Net:
             time.sleep(1)
         return self._http_time()
 
+    def rssi(self):
+        """WiFi signal strength in dBm (about -30 great .. -90 barely), or None."""
+        try:
+            value = self.esp.rssi
+            value = value() if callable(value) else value
+            return int(value) if self.connected() else None
+        except Exception:
+            return None
+
+    def _session(self):
+        pool, ssl = self.pool()
+        import adafruit_requests
+        if pool is not None:
+            return adafruit_requests.Session(pool, ssl)
+        import adafruit_esp32spi.adafruit_esp32spi_socket as sock
+        adafruit_requests.set_socket(sock, self.esp)
+        return adafruit_requests
+
+    def get_json(self, url):
+        """A web page's JSON (a dict), or None. Takes a few seconds; the panel waits."""
+        resp = None
+        try:
+            gc.collect()
+            resp = self._session().get(url, timeout=15)
+            if resp.status_code != 200:
+                print("Web page answered", resp.status_code)
+                return None
+            return resp.json()
+        except Exception as ex:
+            print("Web page:", repr(ex))
+            return None
+        finally:
+            try:
+                if resp:
+                    resp.close()
+            except Exception:
+                pass
+            gc.collect()
+
     def _http_time(self):
         try:
-            pool, ssl = self.pool()
-            import adafruit_requests
-            if pool is not None:
-                session = adafruit_requests.Session(pool, ssl)
-            else:
-                import adafruit_esp32spi.adafruit_esp32spi_socket as sock
-                adafruit_requests.set_socket(sock, self.esp)
-                session = adafruit_requests
+            session = self._session()
             resp = session.get("http://time.akamai.com/?iso")
             text = resp.text
             resp.close()

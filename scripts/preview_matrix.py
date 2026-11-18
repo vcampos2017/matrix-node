@@ -25,9 +25,12 @@ from PIL import Image, ImageDraw, ImageFont  # noqa: E402
 import fake_circuitpython as fake  # noqa: E402
 
 fake.install({})
+import chatty_cards as cards  # noqa: E402
 import chatty_clock as clock  # noqa: E402
 import chatty_news as news  # noqa: E402
 import chatty_screen  # noqa: E402
+import chatty_tide as tide  # noqa: E402
+from chatty_panels import ClockBits, Fx, Roll  # noqa: E402
 
 DOT = 10
 
@@ -171,12 +174,18 @@ def main(out):
                                                   "starts_ts": now + 3 * 3600, "kind": "storms",
                                                   "ts": now}), now, 1)
     n.message("chatty/nodes/greenhouse/data", json.dumps(
-        {"metrics": {"air_temperature_f": 68.4, "soil_moisture_band": "okay"}}), now, 1)
+        {"metrics": {"air_temperature_f": 68.4, "soil_moisture_band": "okay",
+                     "soil_moisture_percent": 44, "soil_voltage": 1.3}}), now, 1)
     n.message("chatty/nodes/lightning/data", json.dumps(
         {"last_strike": {"ts": now - 240, "distance_mi": 6}}), now, 1)
     for name, state in (("rain", "online"), ("greenhouse", "online"), ("chatty", "online"),
-                        ("wordclock", "offline")):
-        n.message("chatty/nodes/%s/status" % name, json.dumps({"state": state}), now, 1)
+                        ("wordclock", "offline"), ("lightning", "online")):
+        n.message("chatty/nodes/%s/status" % name, json.dumps(
+            {"state": state, "clean": name == "wordclock"}), now, 1)
+    n.message("chatty/nodes/rain/status", json.dumps({"state": "offline"}), now, 1)
+    tides = tide.parse({"predictions": [
+        {"t": "2026-11-17 18:20", "v": "0.31", "type": "L"},
+        {"t": "2026-11-18 01:52", "v": "1.86", "type": "H"}]})
     n.message("chatty/alerts/active", json.dumps({"alerts": [
         {"event": "Severe Thunderstorm Warning", "kind": "urgent", "expires_ts": now + 2400}],
         "ts": now}), now, 1)
@@ -184,20 +193,36 @@ def main(out):
     for rotation in (90, 0):
         tag = "portrait" if rotation == 90 else "landscape"
         s = chatty_screen.Screen(fake.FakeDisplay(), rotation, fonts)
+        ClockBits(s)
+        roll, fx = Roll(s), Fx(s)
         local = clock.parts(now - 5 * 3600)
-        s.show_clock(local, {"phase": 0.27, "lit": 0.55, "next": "set", "next_local": (0, 41)}, True)
+        moon_info = {"phase": 0.27, "lit": 0.55, "next": "set", "next_local": (0, 41)}
+        s.show_clock(local, moon_info, True, wifi=3)
         shots.append(("clock-" + tag, paint(s)))
+        s.show_clock(local, moon_info, True, sun={"next": "rise", "next_local": (6, 58)}, wifi=3)
+        shots.append(("clock-sun-" + tag, paint(s)))
         s.rain(True, True)
         for _ in range(20):
             s.rain(True, True)
         shots.append(("rain-" + tag, paint(s)))
         s.rain(False, False)
-        for card in n.cards(now, 2, hm):
+        library = n.cards(now, 2, hm) + [tide.card(tides, now, hm), n.greenhouse_card(2),
+                                         cards.sun_card((6, 58), (17, 24), 37560)]
+        for card in library:
             width = s.show_card(card)
             if width:
                 for _ in range(s.w + 20):
                     s.step_scroll(width)
             shots.append(("card-" + card["icon"] + "-" + tag, paint(s)))
+        roll.show(n.roll(2))
+        shots.append(("card-roll-" + tag, paint(s)))
+        s.show_card(n.cards(now, 2, hm)[1])
+        for kind, frames in (("ripple", 5), ("bolt", 2)):
+            fx.start(kind)
+            for _ in range(frames):
+                fx.step()
+            shots.append(("fx-" + kind + "-" + tag, paint(s)))
+            fx.stop()
         card = {"icon": "warn", "color": news.RED, "lines": ["TAKE", "COVER"] if rotation else
                 ["TAKE COVER"], "scroll": "TORNADO WARNING UNTIL 3:45PM - TAKE SHELTER NOW",
                 "seconds": 0}

@@ -156,6 +156,12 @@ def short_hour(hour, minute=0):
     return str(h) + tail
 
 
+def fit_time(hour, minute=0):
+    """short_hour() in five characters at most: '10:45P' loses its 'P' (30 pixels wide)."""
+    text = short_hour(hour, minute)
+    return text if len(text) <= 5 else text[:-1]
+
+
 def parse_iso_utc(text):
     """'2026-02-17T05:12:34Z' (or with +00:00) -> UTC epoch seconds, or None."""
     try:
