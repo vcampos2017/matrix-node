@@ -45,6 +45,13 @@ import time
 import board
 from digitalio import DigitalInOut, Pull
 
+try:
+    # The MQTT library first, while the memory is still in one piece (it's big, and the
+    # board can't always find room for it after the web library has been in and out).
+    import adafruit_minimqtt.adafruit_minimqtt  # noqa: F401
+except ImportError:
+    pass
+
 import chatty_cards as cardsmod
 import chatty_clock as clock
 import chatty_moon as moonmath
@@ -122,6 +129,7 @@ class App(Library):
         self.news = newsmod.News(self.name)
         self.net = net or Net(setting("ssid"), setting("password"))
         self.link = Link(self.net, self.name, self._message)
+
         self.buttons = Buttons()
         # time
         self.utc_base, self.utc_at = None, 0
@@ -248,13 +256,12 @@ class App(Library):
         if t >= self.next_rssi:
             self.rssi = self.net.rssi()
             self.next_rssi = t + RSSI_EVERY_MS
-        if self.station and self.utc() and t >= self.next_tide and self.mode != "tornado":
-            self.fetch_tides()
         if not self.link.client:
             if t >= self.next_mqtt:
                 if self.link.connect():
                     self.mqtt_gap = 5000
                     self.next_beat = 0
+                    self.next_tide = max(self.next_tide, now_ms() + 30000)
                 else:
                     self.mqtt_gap = min(self.mqtt_gap * 2, 120000)
                 self.next_mqtt = now_ms() + self.mqtt_gap
@@ -266,6 +273,10 @@ class App(Library):
         if t >= self.next_beat:
             self.heartbeat()
             self.next_beat = now_ms() + HEARTBEAT_S * 1000
+        # tides only once Chatty's board is connected (MQTT comes first for memory), and
+        # never during a Tornado Warning
+        elif self.station and self.utc() and t >= self.next_tide and self.mode != "tornado":
+            self.fetch_tides()
 
     def step(self):
         t = now_ms()

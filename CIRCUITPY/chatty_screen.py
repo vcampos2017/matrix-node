@@ -111,10 +111,14 @@ class Screen:
         self.moon.append(self.rain_grid)
         self.drops = [((i * 7 + 3) % self.w, (i * 13) % self.h) for i in range(10)]
         small, large = fonts["small"], fonts["large"]
-        self.outline = [Label(small, color=0, text="99.9%", y=-99) for _ in range(4)]
-        for item in self.outline:
-            self.moon.append(item)
-        self.pct = Label(small, color=0xFFFF00, text="99.9%", y=-99)
+        # how much is lit, on a black strip near the moon's lower edge so it can be read
+        # over a bright moon
+        try:
+            self.pct = Label(small, color=0xFFFF00, text="99.9%", y=-99,
+                             background_color=0x000000, padding_left=1, padding_right=1)
+        except TypeError:
+            self.pct = Label(small, color=0xFFFF00, text="99.9%", y=-99,
+                             background_color=0x000000)
         self.time = Label(large, color=0x808080, text="12:00", y=-99)
         self.date = Label(small, color=0x808080, text="12/31", y=-99)
         self.arrow = Label(fonts["symbol"], color=0x00FF00, text="x", y=-99)
@@ -199,15 +203,10 @@ class Screen:
                     print("Moon picture:", repr(ex))
             lit = moon["lit"] * 100
             text = "100%" if lit >= 99.95 else "{:.1f}".format(lit + 0.05) + "%"
-            self._set(self.pct, text, 16 - self.pct.bounding_box[2] // 2, moon_y + 16)
+            self._set(self.pct, text, 16 - self.pct.bounding_box[2] // 2, moon_y + 25)
             self.pct.x = 16 - self.pct.bounding_box[2] // 2
-            for item, (dx, dy) in zip(self.outline, ((0, -1), (-1, 0), (1, 0), (0, 1))):
-                item.text = text
-                item.x, item.y = self.pct.x + dx, self.pct.y + dy
         else:
             self._set(self.pct, " ", 0, -99)
-            for item in self.outline:
-                item.y = -99
         if self.bits:
             self.bits.mini.hidden = True
         if sun and sun.get("next_local") and self.bits:

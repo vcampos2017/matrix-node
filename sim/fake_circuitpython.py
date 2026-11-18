@@ -87,6 +87,7 @@ class Label:
     def __init__(self, font, color=0xFFFFFF, text="", x=0, y=0, **k):
         self.font, self.color, self.text, self.x, self.y = font, color, text, x, y
         self.hidden = False
+        self.background_color = k.get("background_color")
 
     @property
     def bounding_box(self):

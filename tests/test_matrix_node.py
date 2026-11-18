@@ -562,6 +562,9 @@ def test_app_rotates_the_card_library():
         fake.BROKER.post("chatty/nodes/rain/status", {"state": "online", "every": 60})
         fake.BROKER.post("chatty/nodes/lightning/status", {"state": "offline"})
         run(app, clk, 2)
+        assert asked == []                      # MQTT first; tides 30 s after it connects
+        app.next_tide = 0
+        run(app, clk, 0.2)
         assert len(asked) == 1 and "station=1234567" in asked[0]
         assert app.mode == "clock"
         seen = []
@@ -600,7 +603,11 @@ def test_app_buttons_and_tide_retry():
                              "tide_station": "1234567", "cards": "clock:60, tide:5"})
         asked = []
         app.net.get_json = lambda url: asked.append(url) and None
-        run(app, clk, 2)
+        fake.BROKER.reachable = set()           # Chatty away: no tide fetch either
+        run(app, clk, 40, fps=5)
+        assert asked == []
+        fake.BROKER.reachable = {"192.168.1.50"}
+        run(app, clk, 160, fps=5)
         assert len(asked) == 1 and app.mode == "clock"
         app.buttons.pressed = lambda: ["BUTTON_UP"]
         app.step()
