@@ -6,6 +6,7 @@ Works with the older libraries (adafruit_esp32spi sockets) and the newer ones
 # pylint: disable=import-error,broad-except
 import gc
 import json
+import sys
 import time
 
 import board
@@ -74,7 +75,9 @@ class Net:
 
     def utc_now(self):
         """UTC from the internet (the WiFi chip's own time server first), or None."""
-        for _ in range(3):
+        # The WiFi chip says 0 until it has heard from its time server, which can take a
+        # few seconds: wait for it rather than load the web library (it costs memory).
+        for _ in range(8):
             try:
                 t = self.esp.get_time()
                 t = t[0] if isinstance(t, (tuple, list)) else t
@@ -82,17 +85,24 @@ class Net:
                     return int(t)
             except Exception as ex:
                 print("Time server:", repr(ex))
-            time.sleep(1)
+            time.sleep(1.5)
         return self._http_time()
 
     def rssi(self):
-        """WiFi signal strength in dBm (about -30 great .. -90 barely), or None."""
-        try:
-            value = self.esp.rssi
-            value = value() if callable(value) else value
-            return int(value) if self.connected() else None
-        except Exception:
+        """WiFi signal strength in dBm (about -30 great .. -90 barely), or None.
+        Newer esp32spi libraries have it in ap_info, older ones as esp.rssi."""
+        if not self.connected():
             return None
+        for getter in (lambda e: e.ap_info.rssi, lambda e: e.rssi):
+            try:
+                value = getter(self.esp)
+                value = value() if callable(value) else value
+                value = int(value)
+                if value < 0:
+                    return value
+            except Exception:
+                pass
+        return None
 
     def _session(self):
         pool, ssl = self.pool()
@@ -103,12 +113,18 @@ class Net:
         adafruit_requests.set_socket(sock, self.esp)
         return adafruit_requests
 
+    def _forget_web(self):
+        """Unload the web library: the board's memory is small and MQTT needs it more
+        (it's loaded again for the next fetch). The MQTT socket is left alone."""
+        sys.modules.pop("adafruit_requests", None)
+        gc.collect()
+
     def get_json(self, url):
         """A web page's JSON (a dict), or None. Takes a few seconds; the panel waits."""
         resp = None
+        gc.collect()
         try:
-            gc.collect()
-            resp = self._session().get(url, timeout=15)
+            resp = self._session().get(url, headers={"Connection": "close"}, timeout=15)
             if resp.status_code != 200:
                 print("Web page answered", resp.status_code)
                 return None
@@ -122,7 +138,8 @@ class Net:
                     resp.close()
             except Exception:
                 pass
-            gc.collect()
+            resp = None
+            self._forget_web()
 
     def _http_time(self):
         try:
@@ -134,6 +151,16 @@ class Net:
         except Exception as ex:
             print("Web time:", repr(ex))
             return None
+        finally:
+            self._forget_web()
+
+
+def free():
+    try:
+        gc.collect()
+        return gc.mem_free()
+    except Exception:
+        return -1
 
 
 # --------------------------------------------------------------------------- MQTT
@@ -169,11 +196,18 @@ class Link:
         except Exception as ex:
             print("Couldn't keep the hub note:", repr(ex))
 
+    @staticmethod
+    def mqtt_lib():
+        """Loaded at start-up (chatty_matrix calls this before anything else uses much
+        memory), so the big MQTT library finds room in one piece."""
+        import adafruit_minimqtt.adafruit_minimqtt as MQTT
+        return MQTT
+
     def status_topic(self):
         return "chatty/nodes/" + self.name + "/status"
 
     def _client(self, host):
-        import adafruit_minimqtt.adafruit_minimqtt as MQTT
+        MQTT = self.mqtt_lib()
         pool, ssl = self.net.pool()
         base = {"broker": host, "port": self.port, "client_id": self.client_id, "keep_alive": 90}
         if pool is not None:
@@ -194,6 +228,7 @@ class Link:
     def connect(self):
         """Try each known address once. True when connected."""
         for host in hub.to_try(self.last_good, self.note, self.configured):
+            gc.collect()
             try:
                 print("Looking for Chatty at", host)
                 client = self._client(host)
@@ -206,7 +241,7 @@ class Link:
                 if host != self.last_good:
                     self.last_good = host
                     self._save()
-                print("Connected to Chatty's board at", host)
+                print("Connected to Chatty's board at", host, "- free memory", free())
                 return True
             except Exception as ex:
                 print("  no:", repr(ex))

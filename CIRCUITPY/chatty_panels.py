@@ -59,13 +59,13 @@ class ClockBits:
         return color
 
     def wifi(self, bars, moon_y, level):
-        """bars 0..4, -1 = no WiFi, None = hide. Top right of the moon picture when it's
-        at the top of the panel, bottom right when it's at the bottom."""
+        """bars 0..4, -1 = no WiFi, None = hide. In the moon picture's top right corner
+        (the lit-percent strip is at its bottom)."""
         if bars is None:
             self.bars.hidden = True
             return
         self.bars.x = 32 - 7                      # the moon picture is 32 wide, at x 0
-        self.bars.y = moon_y if moon_y == 0 else moon_y + 28
+        self.bars.y = moon_y
         self.bars_pal[1] = dim(0x00A040 if bars > 1 else 0xC08000, max(level, 0.4))
         self.bars_pal[2] = 0x400000 if bars < 0 else 0x101010
         if bars != self.bars_now:

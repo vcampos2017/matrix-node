@@ -131,6 +131,12 @@ def paint(screen):
                 if item.y < -50 or not item.text.strip():
                     continue
                 f = item.font
+                if getattr(item, "background_color", None) is not None:
+                    bw = (BDF["helvR10"][0].get("0", {}).get("adv", f.w) if "helvR10" in BDF
+                          and "helvR10" in f.path else f.w) * len(item.text) + 2
+                    draw.rectangle((ox + item.x - 1, oy + item.y - f.h // 2,
+                                    ox + item.x + bw - 2, oy + item.y + f.h // 2 - 1),
+                                   fill=color(item.background_color))
                 text = item.text.replace("\u21A5", "^").replace("\u21A7", "v")
                 real = next((v for k, v in BDF.items() if k in f.path), None)
                 if real:

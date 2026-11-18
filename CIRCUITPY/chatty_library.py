@@ -133,6 +133,7 @@ class Library:
         if events:
             self.tides = events
             self.next_tide = now_ms() + tide.FETCH_EVERY * 1000
+            print("Got", len(events), "tides")
         else:
             print("No tide predictions this time")
             self.next_tide = now_ms() + tide.RETRY_AFTER * 1000
@@ -141,8 +142,8 @@ class Library:
     def draw_clock(self, utc):
         """The moon clock. The moonrise line and the sunrise line take turns."""
         wifi = cardsmod.bars(self.rssi)
-        if wifi is None and self.net.esp is not None:
-            wifi = -1
+        if wifi is None and self.net.esp is not None and not self.net.connected():
+            wifi = -1                     # red bars only when the WiFi is really down
         if not utc:
             self.screen.show_clock(None, None, self.twelve, wifi=wifi)
             return
