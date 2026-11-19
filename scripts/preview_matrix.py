@@ -4,8 +4,8 @@
     python3 scripts/preview_matrix.py [out_dir] [fonts_dir]
 
 fonts_dir: a folder with the board's BDF fonts (6x10.bdf, helvR10.bdf, helvB12.bdf, as
-on the CIRCUITPY drive's fonts folder) for a closer look; without it Pillow's own font
-stands in.
+on the CIRCUITPY drive's fonts folder) for a closer look; without them each letter is a
+box. (The board's card text is its built-in terminal font; 6x10 stands in for it here.)
 
 Runs the real screen code (CIRCUITPY) on the stand-ins in
 sim, then paints each lit pixel as a round LED. Fonts are only close to
@@ -20,7 +20,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "CIRCUITPY"))
 sys.path.insert(0, os.path.join(ROOT, "sim"))
 
-from PIL import Image, ImageDraw, ImageFont  # noqa: E402
+from PIL import Image, ImageDraw  # noqa: E402
 
 import fake_circuitpython as fake  # noqa: E402
 
@@ -35,66 +35,7 @@ from chatty_panels import ClockBits, Fx, Roll  # noqa: E402
 DOT = 10
 
 
-BDF = {}
-
-
-def _bdf(fonts_dir):
-    """Read the board's BDF fonts (a small reader: ENCODING, DWIDTH, BBX, BITMAP)."""
-    for name in ("6x10", "helvR10", "helvB12"):
-        path = os.path.join(fonts_dir, name + ".bdf")
-        if not os.path.exists(path):
-            continue
-        glyphs, cur, rows, ascent = {}, None, None, 8
-        with open(path, encoding="latin-1") as fh:
-            for line in fh:
-                parts = line.split()
-                if not parts:
-                    continue
-                key = parts[0]
-                if key == "FONT_ASCENT":
-                    ascent = int(parts[1])
-                elif key == "ENCODING":
-                    cur = {"code": int(parts[1])}
-                elif key == "DWIDTH" and cur is not None:
-                    cur["adv"] = int(parts[1])
-                elif key == "BBX" and cur is not None:
-                    cur["bbx"] = [int(x) for x in parts[1:5]]
-                elif key == "BITMAP" and cur is not None:
-                    rows = []
-                elif key == "ENDCHAR" and cur is not None:
-                    cur["rows"] = rows or []
-                    if cur["code"] >= 0:
-                        glyphs[chr(cur["code"])] = cur
-                    cur, rows = None, None
-                elif rows is not None:
-                    rows.append(int(key, 16))
-        BDF[name] = (glyphs, ascent)
-
-
-def _bdf_text(canvas, x, y_mid, h, text, fill, font):
-    """Draw like a displayio Label: y is the middle of the line."""
-    glyphs, ascent = font
-    base = y_mid - h // 2 + ascent
-    for ch in text:
-        g = glyphs.get(ch) or glyphs.get("?")
-        if not g:
-            continue
-        w, gh, ox, oy = g["bbx"]
-        nbits = (w + 7) // 8 * 8
-        for r, bits in enumerate(g["rows"]):
-            for col in range(w):
-                if bits >> (nbits - 1 - col) & 1:
-                    px, py = x + ox + col, base - oy - gh + r
-                    if 0 <= px < canvas.width and 0 <= py < canvas.height:
-                        canvas.putpixel((px, py), fill)
-        x += g.get("adv", w)
-
-
-def _font(px):
-    try:
-        return ImageFont.load_default(size=px)
-    except TypeError:
-        return ImageFont.load_default()
+FONTS_DIR = None
 
 
 def paint(screen):
@@ -127,24 +68,6 @@ def paint(screen):
                             continue
                         canvas.putpixel((ox + item.x + x, oy + item.y + y), color(pal[v])) \
                             if 0 <= ox + item.x + x < w and 0 <= oy + item.y + y < h else None
-            elif isinstance(item, fake.Label):
-                if item.y < -50 or not item.text.strip():
-                    continue
-                f = item.font
-                if getattr(item, "background_color", None) is not None:
-                    bw = (BDF["helvR10"][0].get("0", {}).get("adv", f.w) if "helvR10" in BDF
-                          and "helvR10" in f.path else f.w) * len(item.text) + 2
-                    draw.rectangle((ox + item.x - 1, oy + item.y - f.h // 2,
-                                    ox + item.x + bw - 2, oy + item.y + f.h // 2 - 1),
-                                   fill=color(item.background_color))
-                text = item.text.replace("\u21A5", "^").replace("\u21A7", "v")
-                real = next((v for k, v in BDF.items() if k in f.path), None)
-                if real:
-                    _bdf_text(canvas, ox + item.x, oy + item.y, f.h, item.text,
-                              color(item.color), real)
-                    continue
-                draw.text((ox + item.x, oy + item.y - f.h // 2), text,
-                          fill=color(item.color), font=_font(f.h))
 
     walk(screen.root, 0, 0)
     big = Image.new("RGB", (w * DOT + 20, h * DOT + 20), (18, 18, 20))
@@ -172,7 +95,11 @@ def moon(draw, x0, y0, phase):
 
 def main(out):
     os.makedirs(out, exist_ok=True)
-    fonts = chatty_screen.load_fonts()
+    if FONTS_DIR:
+        sys.modules["terminalio"].FONT = fake.BuiltinFont(os.path.join(FONTS_DIR, "6x10.bdf"))
+        fonts = chatty_screen.load_fonts(FONTS_DIR)
+    else:
+        fonts = chatty_screen.load_fonts()
     now = clock.epoch(2026, 11, 17, 21, 5)
     hm = lambda utc: clock.parts(utc - 5 * 3600)[3:5]  # noqa: E731
     n = news.News()
@@ -252,5 +179,5 @@ def main(out):
 
 if __name__ == "__main__":
     if len(sys.argv) > 2:
-        _bdf(sys.argv[2])
+        FONTS_DIR = sys.argv[2]
     main(sys.argv[1] if len(sys.argv) > 1 else "matrix_preview")

@@ -14,6 +14,7 @@ import chatty_art as art
 import chatty_clock as clock
 from chatty_bits import dim
 
+DIGITS = "0123456789:/.%- APM"
 BITPLANES = 4                   # 16 shades per color (6 cost about 4 KB more memory)
 
 
@@ -77,22 +78,18 @@ def show(display, group):
         display.show(group)
 
 
-def load_fonts():
-    from adafruit_bitmap_font import bitmap_font
-    fonts = {}
-    for key, path, glyphs in (("large", "/fonts/helvB12.bdf", "0123456789:"),
-                              ("small", "/fonts/helvR10.bdf", "0123456789:/.%"),
-                              ("text", "/fonts/6x10.bdf", "↥↧")):
+def load_fonts(folder="/fonts"):
+    """The clock's digits from the board's BDF fonts (only the letters it shows), the
+    card text in the built-in terminal font (no memory), the arrows drawn here."""
+    import terminalio
+    import chatty_text as text
+    fonts = {"text": text.BuiltinFont(terminalio.FONT), "symbol": text.arrows()}
+    for key, name in (("large", "helvB12"), ("small", "helvR10")):
         try:
-            font = bitmap_font.load_font(path)
-            if glyphs:
-                font.load_glyphs(glyphs)
-            fonts[key] = font
+            fonts[key] = text.load_bdf(folder + "/" + name + ".bdf", DIGITS)
         except Exception as ex:
-            print("Font", path, repr(ex))
-            import terminalio
-            fonts[key] = terminalio.FONT
-    fonts["symbol"] = fonts["text"]         # the arrows: one copy of the 6x10 font, not two
+            print("Font", name, repr(ex))
+            fonts[key] = fonts["text"]
     return fonts
 
 
@@ -109,11 +106,7 @@ def moon_bitmap(frame):
 
 class Screen:
     def __init__(self, display, rotation, fonts):
-        try:
-            # one small bitmap per line of text, not a picture tile per letter: far less memory
-            from adafruit_display_text.bitmap_label import Label
-        except ImportError:
-            from adafruit_display_text.label import Label
+        from chatty_text import Label
         self.Label = Label
         self.display, self.fonts = display, fonts
         self.portrait = rotation in (90, 270)

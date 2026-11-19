@@ -640,6 +640,57 @@ def test_board_makes_no_web_requests():
             assert "adafruit_requests" not in text, name
 
 
+TINY_BDF = """STARTFONT 2.1
+FONTBOUNDINGBOX 4 6 0 -1
+CHARS 2
+STARTCHAR one
+ENCODING 49
+DWIDTH 5 0
+BBX 3 5 0 0
+BITMAP
+40
+C0
+40
+40
+E0
+ENDCHAR
+STARTCHAR M
+ENCODING 77
+DWIDTH 5 0
+BBX 4 5 0 0
+BITMAP
+90
+F0
+F0
+90
+90
+ENDCHAR
+ENDFONT
+"""
+
+
+def test_own_text_labels():
+    import tempfile
+    fake.install({})
+    import chatty_text as text
+    path = os.path.join(tempfile.mkdtemp(), "tiny.bdf")
+    with open(path, "w") as fh:
+        fh.write(TINY_BDF)
+    font = text.load_bdf(path, "1")
+    assert set(font.glyphs) == {"1", "M"} and font.ascent == 5
+    label = text.Label(font, color=0x123456, text="11", background_color=0, padding_left=1)
+    assert label.bounding_box[2] == 11 and label.color == 0x123456
+    bmp = label[0].bitmap
+    assert [bmp[2, y] for y in range(5)] == [1, 1, 1, 1, 1]      # the 1's stem
+    assert 0 not in label.pal.transparent                           # a solid background
+    label.text = "1?"                                               # unknown letter: a gap
+    assert label.bounding_box[2] == 6
+    arrows = text.arrows()
+    assert text.Label(arrows, text="\u21a5").bounding_box[2] == 6
+    term = text.Label(text.BuiltinFont(sys.modules["terminalio"].FONT), text="HI")
+    assert term.bounding_box[2] == 12
+
+
 def test_precompiled_files_match_the_code():
     """CIRCUITPY_MPY/ must be rebuilt (bash scripts/build_mpy.sh) after a .py change."""
     sys.path.insert(0, os.path.join(ROOT, "scripts"))

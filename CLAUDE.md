@@ -39,3 +39,7 @@
   with Adafruit's mpy-cross 10.3.2 (`bash scripts/build_mpy.sh <mpy-cross>`); Vincent copies
   that folder, not the .py files (a .py on the board wins over the .mpy). Rebuild after any
   .py change: a test compares `CIRCUITPY_MPY/sources.txt` with the sources.
+- Text (2026-11-19): fonts + adafruit_display_text took ~48 KB on the board, so
+  `chatty_text.py` replaced them: digits for the clock from helvB12/helvR10.bdf (only
+  DIGITS), card/roll text in terminalio.FONT (in flash, no RAM), moonrise arrows drawn.
+  Label keeps display_text's API (.text/.x/.y/.color/.bounding_box; y = middle of line).

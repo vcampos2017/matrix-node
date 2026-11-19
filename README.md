@@ -56,14 +56,15 @@ board's small memory), then `mqtt_hosts` from secrets.py, then `chatty-node`.
 | `chatty_hub.py` | finding Chatty's board (tested) |
 | `chatty_art.py` | the 9x9 card pictures |
 | `chatty_bits.py` | settings, a millisecond clock, dimming |
+| `chatty_text.py` | text: only the needed letters from the BDF fonts, the built-in terminal font for cards |
 | `secrets_example.py` | the settings to add to your secrets.py |
 
 The board keeps its own `fonts/` and `moon/` folders from the Moon Phase Clock. The
 original's startup splash images are not used. Libraries from the Adafruit bundle that
 matches the board's CircuitPython: `adafruit_minimqtt`, `adafruit_connection_manager`,
-`adafruit_ticks`, `adafruit_esp32spi`, `adafruit_requests`, `adafruit_display_text`,
-`adafruit_bitmap_font`, `adafruit_lis3dh`, `adafruit_matrixportal`, `adafruit_portalbase`,
-`adafruit_bus_device`, `neopixel`.
+`adafruit_ticks`, `adafruit_esp32spi`, and `adafruit_lis3dh` + `adafruit_bus_device` (only
+without a `rotation` setting). Text is drawn by `chatty_text.py`, so `adafruit_display_text`
+and `adafruit_bitmap_font` are not needed (they can stay in `lib`: they're never loaded).
 
 ## On a computer
 
