@@ -30,3 +30,8 @@
   time server doesn't answer. Startup prints free memory.
 - Tests: `python3 tests/test_matrix_node.py` (stand-ins in `sim/`, no packages). Pictures:
   `python3 scripts/preview_matrix.py out [fonts_dir]` (needs Pillow).
+- Memory (2026-11-19): with the card library the board had only ~9 KB free before WiFi
+  (3.8 KB after), so MQTT couldn't connect. Trimmed: panel at 4 bit planes, bitmap_label
+  (one bitmap per line, not a tile per letter), rgbmatrix direct, one 6x10 font object,
+  "rotation" in secrets.py skips the accelerometer (its library is unloaded after use),
+  failed MQTT tries close their socket. Startup prints free memory at each stage.

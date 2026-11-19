@@ -235,7 +235,9 @@ def install(secrets=None, clock_offset=0.0):
     mods["adafruit_bitmap_font"].bitmap_font = mods["adafruit_bitmap_font.bitmap_font"]
     mod("adafruit_display_text")
     mod("adafruit_display_text.label", Label=Label)
+    mod("adafruit_display_text.bitmap_label", Label=Label)
     mods["adafruit_display_text"].label = mods["adafruit_display_text.label"]
+    mods["adafruit_display_text"].bitmap_label = mods["adafruit_display_text.bitmap_label"]
     mod("adafruit_minimqtt")
     mod("adafruit_minimqtt.adafruit_minimqtt", MQTT=MQTT)
     mods["adafruit_minimqtt"].adafruit_minimqtt = mods["adafruit_minimqtt.adafruit_minimqtt"]

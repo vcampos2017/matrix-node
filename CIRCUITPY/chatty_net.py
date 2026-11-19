@@ -180,7 +180,7 @@ class Link:
         for host in hub.to_try(self.last_good, self.note, self.configured):
             gc.collect()
             try:
-                print("Looking for Chatty at", host)
+                print("Looking for Chatty at", host, "- free memory", free())
                 client = self._client(host)
                 client.will_set(self.status_topic(), json.dumps({"state": "offline"}), retain=True)
                 client.on_message = self._message
@@ -195,8 +195,23 @@ class Link:
                 return True
             except Exception as ex:
                 print("  no:", repr(ex))
+                self._close(client)
+                client = None
                 gc.collect()
         return False
+
+    def _close(self, client):
+        """After a failed try: close its socket, or each try keeps one (and its memory)."""
+        try:
+            if client:
+                client.disconnect()
+        except Exception:
+            pass
+        try:
+            import adafruit_connection_manager as acm
+            acm.connection_manager_close_all(release_references=True)
+        except Exception:
+            pass
 
     def _message(self, client, topic, message):
         if topic == "chatty/hub":

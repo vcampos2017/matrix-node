@@ -14,14 +14,12 @@ import chatty_art as art
 import chatty_clock as clock
 from chatty_bits import dim
 
-BITPLANES = 6
+BITPLANES = 4                   # 16 shades per color (6 cost about 4 KB more memory)
 
 
 def make_display():
+    # rgbmatrix straight from the core: the adafruit_matrixportal library costs memory
     try:
-        from adafruit_matrixportal.matrix import Matrix
-        return Matrix(bit_depth=BITPLANES).display
-    except ImportError:
         import framebufferio
         import rgbmatrix
         matrix = rgbmatrix.RGBMatrix(
@@ -31,21 +29,40 @@ def make_display():
             addr_pins=[board.MTX_ADDRA, board.MTX_ADDRB, board.MTX_ADDRC, board.MTX_ADDRD],
             clock_pin=board.MTX_CLK, latch_pin=board.MTX_LAT, output_enable_pin=board.MTX_OE)
         return framebufferio.FramebufferDisplay(matrix)
+    except ImportError:
+        from adafruit_matrixportal.matrix import Matrix
+        return Matrix(bit_depth=BITPLANES).display
 
 
-def which_way_up():
-    """0 / 90 / 180 / 270 from the accelerometer, like the original clock."""
+def which_way_up(fixed=None):
+    """0 / 90 / 180 / 270: "rotation" in secrets.py, else from the accelerometer like the
+    original clock. The accelerometer's library is unloaded after (it costs memory)."""
+    if fixed is not None:
+        try:
+            return (int(fixed) // 90 % 4) * 90
+        except (TypeError, ValueError):
+            print("rotation in secrets.py should be 0, 90, 180 or 270")
     try:
         import math
         import adafruit_lis3dh
-        accel = adafruit_lis3dh.LIS3DH_I2C(busio.I2C(board.SCL, board.SDA), address=0x19)
+        i2c = busio.I2C(board.SCL, board.SDA)
+        accel = adafruit_lis3dh.LIS3DH_I2C(i2c, address=0x19)
         _ = accel.acceleration
         time.sleep(0.1)
         a = accel.acceleration
+        i2c.deinit()
         return (int(((math.atan2(-a.y, -a.x) + math.pi) / (math.pi * 2) + 0.875) * 4) % 4) * 90
     except Exception as ex:
         print("Accelerometer:", repr(ex))
         return 0
+    finally:
+        _forget("adafruit_lis3dh", "adafruit_bus_device.i2c_device", "adafruit_bus_device")
+
+
+def _forget(*names):
+    import sys
+    for name in names:
+        sys.modules.pop(name, None)
 
 
 def show(display, group):
@@ -60,8 +77,7 @@ def load_fonts():
     fonts = {}
     for key, path, glyphs in (("large", "/fonts/helvB12.bdf", "0123456789:"),
                               ("small", "/fonts/helvR10.bdf", "0123456789:/.%"),
-                              ("symbol", "/fonts/6x10.bdf", "↥↧"),
-                              ("text", "/fonts/6x10.bdf", None)):
+                              ("text", "/fonts/6x10.bdf", "↥↧")):
         try:
             font = bitmap_font.load_font(path)
             if glyphs:
@@ -71,6 +87,7 @@ def load_fonts():
             print("Font", path, repr(ex))
             import terminalio
             fonts[key] = terminalio.FONT
+    fonts["symbol"] = fonts["text"]         # the arrows: one copy of the 6x10 font, not two
     return fonts
 
 
@@ -87,7 +104,11 @@ def moon_bitmap(frame):
 
 class Screen:
     def __init__(self, display, rotation, fonts):
-        from adafruit_display_text.label import Label
+        try:
+            # one small bitmap per line of text, not a picture tile per letter: far less memory
+            from adafruit_display_text.bitmap_label import Label
+        except ImportError:
+            from adafruit_display_text.label import Label
         self.Label = Label
         self.display, self.fonts = display, fonts
         self.portrait = rotation in (90, 270)

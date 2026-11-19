@@ -62,6 +62,8 @@ from chatty_net import Net, Link, free
 from chatty_panels import ClockBits, Roll, Fx
 from chatty_screen import Screen, make_display, which_way_up, load_fonts
 
+print("Free memory with the code loaded:", free())
+
 FRAME_MS = 40              # about 25 frames a second
 HEARTBEAT_S = 60
 MQTT_EVERY_MS = 1000       # how often to check for messages
@@ -113,16 +115,18 @@ class App(Library):
         self.deck = cardsmod.Deck(cardsmod.parse(setting("cards"), setting("news_every")))
         self.tide_units = "english"
         self.tides = []                 # from Chatty's chatty/tides
-        self.rotation = which_way_up() if display is None else 0
+        self.rotation = which_way_up(setting("rotation")) if display is None else 0
         self.display = display or make_display()
         try:
             self.display.rotation = self.rotation
         except Exception:
             pass
+        print("Free memory with the panel:", free())
         self.screen = Screen(self.display, self.rotation, load_fonts())
         ClockBits(self.screen)
         self.roll = Roll(self.screen)
         self.fx = Fx(self.screen)
+        print("Free memory with the fonts and pictures:", free())
         self.news = newsmod.News(self.name)
         self.net = net or Net(setting("ssid"), setting("password"))
         self.link = Link(self.net, self.name, self._message)
