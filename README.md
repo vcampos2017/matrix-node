@@ -79,8 +79,12 @@ Moon Phase Clock by Phil 'PaintYourDragon' Burgess for Adafruit Industries, MIT 
 1. Back up the CIRCUITPY drive (copy it all to a folder on the computer).
 2. Check `boot_out.txt` for the CircuitPython version and get the matching library bundle
    from https://circuitpython.org/libraries (the libraries above go in `lib`).
-3. Copy every file in `CIRCUITPY/` to the top of the drive (it replaces `code.py`), except
-   `secrets_example.py`. Keep the `fonts` and `moon` folders that are already there.
+3. Copy every file in `CIRCUITPY_MPY/` to the top of the drive (it replaces `code.py`).
+   These are the same files precompiled for CircuitPython 10 (`.mpy`): the board doesn't
+   have to compile them, which leaves enough memory for MQTT. Delete any `chatty_*.py`
+   left on the drive: the board uses a `.py` before an `.mpy` of the same name. Keep the
+   `fonts` and `moon` folders that are already there. (`CIRCUITPY/` holds the readable
+   source; after changing it, rebuild with `bash scripts/build_mpy.sh <mpy-cross>`.)
 4. Add `timezone` and `mqtt_hosts` (Chatty's home address) to `secrets.py`, like
    `secrets_example.py`. Latitude and longitude are optional (moonrise / moonset, sunrise /
    sunset). `cards` is optional too.

@@ -35,3 +35,7 @@
   (one bitmap per line, not a tile per letter), rgbmatrix direct, one 6x10 font object,
   "rotation" in secrets.py skips the accelerometer (its library is unloaded after use),
   failed MQTT tries close their socket. Startup prints free memory at each stage.
+- Precompiled (2026-11-19, Vincent OK'd): `CIRCUITPY_MPY/` = code.py + chatty_*.mpy built
+  with Adafruit's mpy-cross 10.3.2 (`bash scripts/build_mpy.sh <mpy-cross>`); Vincent copies
+  that folder, not the .py files (a .py on the board wins over the .mpy). Rebuild after any
+  .py change: a test compares `CIRCUITPY_MPY/sources.txt` with the sources.

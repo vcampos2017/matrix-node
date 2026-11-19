@@ -640,6 +640,17 @@ def test_board_makes_no_web_requests():
             assert "adafruit_requests" not in text, name
 
 
+def test_precompiled_files_match_the_code():
+    """CIRCUITPY_MPY/ must be rebuilt (bash scripts/build_mpy.sh) after a .py change."""
+    sys.path.insert(0, os.path.join(ROOT, "scripts"))
+    import mpy_sources
+    built = open(os.path.join(ROOT, "CIRCUITPY_MPY", "sources.txt")).read()
+    assert built == mpy_sources.fingerprints(), "run: bash scripts/build_mpy.sh <mpy-cross>"
+    for line in built.split():
+        if line.endswith(".py"):
+            assert os.path.exists(os.path.join(ROOT, "CIRCUITPY_MPY", line[:-3] + ".mpy")), line
+
+
 TIDES_NOW = _noaa(("2026-11-17 14:06", "1.712", "H"), ("2026-11-17 20:48", "0.402", "L"),
                   ("2026-11-18 03:30", "1.905", "H"), ("2026-11-18 10:12", "-0.150", "L"),
                   ("2026-11-18 16:40", "1.600", "H"), ("2026-11-18 23:02", "0.500", "L"))
