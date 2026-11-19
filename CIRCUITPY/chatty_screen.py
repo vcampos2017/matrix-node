@@ -20,6 +20,11 @@ BITPLANES = 4                   # 16 shades per color (6 cost about 4 KB more me
 def make_display():
     # rgbmatrix straight from the core: the adafruit_matrixportal library costs memory
     try:
+        # the board keeps the panel from the last run after a soft reboot: let it go first
+        displayio.release_displays()
+    except AttributeError:
+        pass
+    try:
         import framebufferio
         import rgbmatrix
         matrix = rgbmatrix.RGBMatrix(
