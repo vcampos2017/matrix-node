@@ -10,10 +10,7 @@ secrets = {
     # The card library: which screens it rotates through and for how many seconds each
     # (chatty_cards.py lists them). A Tornado Warning always takes over, whatever this says.
     "cards": "clock:20, news, tide:8, clock:20, news, greenhouse:6, roll:8, clock:20, news, sun:6",
-    # Tides: a NOAA station number from tidesandcurrents.noaa.gov (the station page's
-    # 7 digits). Left out: no tide card.
-    "tide_station": "1234567",         # an example: put your station's number here
-    # "tide_units": "metric",           # meters instead of feet
+    # Tides come from Chatty: set CHATTY_TIDE_STATION in her /etc/chatty/secrets.env.
     # "node_name": "matrix",
     # "twelve_hour": True,
     # "night_start": 22, "night_end": 7,
