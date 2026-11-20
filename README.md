@@ -56,14 +56,15 @@ board's small memory), then `mqtt_hosts` from secrets.py, then `chatty-node`.
 | `chatty_hub.py` | finding Chatty's board (tested) |
 | `chatty_art.py` | the 9x9 card pictures |
 | `chatty_bits.py` | settings, a millisecond clock, dimming |
+| `chatty_text.py` | text: only the needed letters from the BDF fonts, the built-in terminal font for cards |
 | `secrets_example.py` | the settings to add to your secrets.py |
 
 The board keeps its own `fonts/` and `moon/` folders from the Moon Phase Clock. The
 original's startup splash images are not used. Libraries from the Adafruit bundle that
 matches the board's CircuitPython: `adafruit_minimqtt`, `adafruit_connection_manager`,
-`adafruit_ticks`, `adafruit_esp32spi`, `adafruit_requests`, `adafruit_display_text`,
-`adafruit_bitmap_font`, `adafruit_lis3dh`, `adafruit_matrixportal`, `adafruit_portalbase`,
-`adafruit_bus_device`, `neopixel`.
+`adafruit_ticks`, `adafruit_esp32spi`, and `adafruit_lis3dh` + `adafruit_bus_device` (only
+without a `rotation` setting). Text is drawn by `chatty_text.py`, so `adafruit_display_text`
+and `adafruit_bitmap_font` are not needed (they can stay in `lib`: they're never loaded).
 
 ## On a computer
 
@@ -79,8 +80,12 @@ Moon Phase Clock by Phil 'PaintYourDragon' Burgess for Adafruit Industries, MIT 
 1. Back up the CIRCUITPY drive (copy it all to a folder on the computer).
 2. Check `boot_out.txt` for the CircuitPython version and get the matching library bundle
    from https://circuitpython.org/libraries (the libraries above go in `lib`).
-3. Copy every file in `CIRCUITPY/` to the top of the drive (it replaces `code.py`), except
-   `secrets_example.py`. Keep the `fonts` and `moon` folders that are already there.
+3. Copy every file in `CIRCUITPY_MPY/` to the top of the drive (it replaces `code.py`).
+   These are the same files precompiled for CircuitPython 10 (`.mpy`): the board doesn't
+   have to compile them, which leaves enough memory for MQTT. Delete any `chatty_*.py`
+   left on the drive: the board uses a `.py` before an `.mpy` of the same name. Keep the
+   `fonts` and `moon` folders that are already there. (`CIRCUITPY/` holds the readable
+   source; after changing it, rebuild with `bash scripts/build_mpy.sh <mpy-cross>`.)
 4. Add `timezone` and `mqtt_hosts` (Chatty's home address) to `secrets.py`, like
    `secrets_example.py`. Latitude and longitude are optional (moonrise / moonset, sunrise /
    sunset). `cards` is optional too.

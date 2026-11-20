@@ -640,6 +640,68 @@ def test_board_makes_no_web_requests():
             assert "adafruit_requests" not in text, name
 
 
+TINY_BDF = """STARTFONT 2.1
+FONTBOUNDINGBOX 4 6 0 -1
+CHARS 2
+STARTCHAR one
+ENCODING 49
+DWIDTH 5 0
+BBX 3 5 0 0
+BITMAP
+40
+C0
+40
+40
+E0
+ENDCHAR
+STARTCHAR M
+ENCODING 77
+DWIDTH 5 0
+BBX 4 5 0 0
+BITMAP
+90
+F0
+F0
+90
+90
+ENDCHAR
+ENDFONT
+"""
+
+
+def test_own_text_labels():
+    import tempfile
+    fake.install({})
+    import chatty_text as text
+    path = os.path.join(tempfile.mkdtemp(), "tiny.bdf")
+    with open(path, "w") as fh:
+        fh.write(TINY_BDF)
+    font = text.load_bdf(path, "1")
+    assert set(font.glyphs) == {"1", "M"} and font.ascent == 5
+    label = text.Label(font, color=0x123456, text="11", background_color=0, padding_left=1)
+    assert label.bounding_box[2] == 11 and label.color == 0x123456
+    bmp = label[0].bitmap
+    assert [bmp[2, y] for y in range(5)] == [1, 1, 1, 1, 1]      # the 1's stem
+    assert 0 not in label.pal.transparent                           # a solid background
+    label.text = "1?"                                               # unknown letter: a gap
+    assert label.bounding_box[2] == 6
+    arrows = text.arrows()
+    assert text.Label(arrows, text="\u21a5").bounding_box[2] == 6
+    term = text.Label(text.BuiltinFont(sys.modules["terminalio"].FONT), text="HI")
+    assert term.bounding_box[2] == 12
+
+
+def test_precompiled_files_match_the_code():
+    """CIRCUITPY_MPY/ must be rebuilt (bash scripts/build_mpy.sh) after a .py change."""
+    sys.path.insert(0, os.path.join(ROOT, "scripts"))
+    import mpy_sources
+    built = open(os.path.join(ROOT, "CIRCUITPY_MPY", "sources.txt")).read()
+    assert built == mpy_sources.fingerprints(), "run: bash scripts/build_mpy.sh <mpy-cross>"
+    for line in built.split():
+        if line.endswith(".py"):
+            assert os.path.exists(os.path.join(ROOT, "CIRCUITPY_MPY", line[:-3] + ".mpy")), line
+
+
 TIDES_NOW = _noaa(("2026-11-17 14:06", "1.712", "H"), ("2026-11-17 20:48", "0.402", "L"),
                   ("2026-11-18 03:30", "1.905", "H"), ("2026-11-18 10:12", "-0.150", "L"),
                   ("2026-11-18 16:40", "1.600", "H"), ("2026-11-18 23:02", "0.500", "L"))

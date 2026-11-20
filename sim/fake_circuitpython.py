@@ -13,11 +13,11 @@ import types
 
 
 class Group(list):
-    def __init__(self, *a, **k):
+    def __init__(self, *a, x=0, y=0, scale=1, **k):
         super().__init__()
         self.hidden = False
-        self.x = self.y = 0
-        self.scale = 1
+        self.x, self.y = x, y
+        self.scale = scale
 
     def __bool__(self):     # a Group is always "something", even when empty
         return True
@@ -92,6 +92,47 @@ class Label:
     @property
     def bounding_box(self):
         return (0, -self.font.h // 2, self.font.w * len(self.text), self.font.h)
+
+
+class BuiltinFont:
+    """Like terminalio.FONT: one sheet of 6 x 12 tiles. With a BDF file (the board's
+    6x10.bdf) the letters are real; without one each letter is a small box."""
+
+    W, H = 6, 12
+
+    def __init__(self, bdf=None):
+        self.bitmap = Bitmap(self.W * 96, self.H, 2)
+        drawn = set()
+        if bdf:
+            try:
+                import chatty_text
+                font = chatty_text.load_bdf(bdf, "".join(chr(c) for c in range(32, 127)))
+                for ch, g in font.glyphs.items():
+                    i, src = ord(ch) - 32, g[0]
+                    if not 0 <= i < 96:
+                        continue
+                    top = 9 - g[3] - g[5]
+                    for y in range(g[3]):
+                        for x in range(g[2]):
+                            if src[x, y] and 0 <= x + g[4] < self.W and 0 <= top + y < self.H:
+                                self.bitmap[i * self.W + x + g[4], top + y] = 1
+                    drawn.add(i)
+            except OSError:
+                pass
+        for i in range(1, 96):
+            if i in drawn:
+                continue
+            for y in range(3, 10):
+                for x in range(1, 5):
+                    self.bitmap[i * self.W + x, y] = 1
+
+    def get_bounding_box(self):
+        return (self.W, self.H)
+
+    def get_glyph(self, code):
+        i = code - 32 if 32 <= code < 128 else ord("?") - 32
+        return types.SimpleNamespace(bitmap=self.bitmap, tile_index=i, width=self.W,
+                                     height=self.H, dx=0, dy=0, shift_x=self.W, shift_y=0)
 
 
 def load_font(path):
@@ -229,13 +270,15 @@ def install(secrets=None, clock_offset=0.0):
     mod("digitalio", DigitalInOut=_Pin, Pull=types.SimpleNamespace(UP=1, DOWN=2))
     nvm = bytearray(256)
     mod("microcontroller", nvm=nvm, cpu=types.SimpleNamespace(uid=b"\x01\x02\x03\x04"))
-    mod("terminalio", FONT=FakeFont("terminal"))
+    mod("terminalio", FONT=BuiltinFont())
     mod("adafruit_bitmap_font")
     mod("adafruit_bitmap_font.bitmap_font", load_font=load_font)
     mods["adafruit_bitmap_font"].bitmap_font = mods["adafruit_bitmap_font.bitmap_font"]
     mod("adafruit_display_text")
     mod("adafruit_display_text.label", Label=Label)
+    mod("adafruit_display_text.bitmap_label", Label=Label)
     mods["adafruit_display_text"].label = mods["adafruit_display_text.label"]
+    mods["adafruit_display_text"].bitmap_label = mods["adafruit_display_text.bitmap_label"]
     mod("adafruit_minimqtt")
     mod("adafruit_minimqtt.adafruit_minimqtt", MQTT=MQTT)
     mods["adafruit_minimqtt"].adafruit_minimqtt = mods["adafruit_minimqtt.adafruit_minimqtt"]

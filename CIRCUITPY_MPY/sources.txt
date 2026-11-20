@@ -1,0 +1,14 @@
+chatty_art.py 0546ca4e4d49fefc
+chatty_bits.py 7a95c17a2e3ac526
+chatty_cards.py 992fa6c1e6b6fac0
+chatty_clock.py 822a2f916847c65c
+chatty_hub.py 947b4c9192fb83c1
+chatty_library.py 81173076a8626e42
+chatty_matrix.py b40f8e168433eccb
+chatty_moon.py 109d57318c49e0fa
+chatty_net.py 1f7282c6f51e87af
+chatty_news.py 14b21ea5d854eafa
+chatty_panels.py dbc3cfa3706cb493
+chatty_screen.py c2face2d7f4bba89
+chatty_text.py 245964487f2532e4
+chatty_tide.py 579d33fab5d79f52

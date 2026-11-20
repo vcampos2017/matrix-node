@@ -30,3 +30,16 @@
   time server doesn't answer. Startup prints free memory.
 - Tests: `python3 tests/test_matrix_node.py` (stand-ins in `sim/`, no packages). Pictures:
   `python3 scripts/preview_matrix.py out [fonts_dir]` (needs Pillow).
+- Memory (2026-11-19): with the card library the board had only ~9 KB free before WiFi
+  (3.8 KB after), so MQTT couldn't connect. Trimmed: panel at 4 bit planes, bitmap_label
+  (one bitmap per line, not a tile per letter), rgbmatrix direct, one 6x10 font object,
+  "rotation" in secrets.py skips the accelerometer (its library is unloaded after use),
+  failed MQTT tries close their socket. Startup prints free memory at each stage.
+- Precompiled (2026-11-19, Vincent OK'd): `CIRCUITPY_MPY/` = code.py + chatty_*.mpy built
+  with Adafruit's mpy-cross 10.3.2 (`bash scripts/build_mpy.sh <mpy-cross>`); Vincent copies
+  that folder, not the .py files (a .py on the board wins over the .mpy). Rebuild after any
+  .py change: a test compares `CIRCUITPY_MPY/sources.txt` with the sources.
+- Text (2026-11-19): fonts + adafruit_display_text took ~48 KB on the board, so
+  `chatty_text.py` replaced them: digits for the clock from helvB12/helvR10.bdf (only
+  DIGITS), card/roll text in terminalio.FONT (in flash, no RAM), moonrise arrows drawn.
+  Label keeps display_text's API (.text/.x/.y/.color/.bounding_box; y = middle of line).
