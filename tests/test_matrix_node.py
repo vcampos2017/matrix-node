@@ -241,6 +241,42 @@ def test_greenhouse_card_and_roll_call():
     assert all(c["icon"] not in ("leaf", "nodes") for c in n.cards(NOW, 10, hm))
 
 
+def test_co2_card():
+    n = news.News("matrix")
+    n.message("chatty/nodes/greenhouse/data",
+              json.dumps({"metrics": {"air_temperature_f": 70, "soil_moisture_band": "wet"}}), NOW, 10)
+    assert n.co2_card(10) is None                                  # no CO2 sensor: no card
+    n.message("chatty/nodes/greenhouse/data", json.dumps(
+        {"metrics": {"soil_moisture_band": "wet", "co2_ppm": 641.6, "co2_band": "normal"}}), NOW, 20)
+    card = n.co2_card(20)
+    assert card["lines"] == ["CO2", "642", "PPM"] and card["color"] == news.GREEN
+    n.message("chatty/nodes/greenhouse/data", json.dumps({"metrics": {"co2_ppm": 1800}}), NOW, 30)
+    card = n.co2_card(30)
+    assert card["lines"] == ["CO2", "1800", "HIGH"] and card["color"] == news.ORANGE
+    assert n.co2_card(30 + news.READING_STALE + 1) is None
+
+
+def test_app_shows_co2_after_the_greenhouse():
+    real = time.monotonic_ns
+    clk = Clock()
+    try:
+        app = make_app(clk, {"ssid": "HomeWiFi", "password": "x", "timezone": "America/Denver",
+                             "mqtt_hosts": "192.168.1.50", "cards": "clock:4, greenhouse:3"})
+        fake.BROKER.post("chatty/nodes/greenhouse/data",
+                         {"metrics": {"air_temperature_f": 70, "soil_moisture_band": "wet",
+                                      "co2_ppm": 640, "co2_band": "normal"}})
+        run(app, clk, 2)
+        shown = []
+        for _ in range(12 * 25):
+            app.step()
+            clk.advance(1 / 25)
+            if app.mode == "card" and (not shown or shown[-1] != app.card["lines"]):
+                shown.append(app.card["lines"])
+        assert shown[0][0] != "CO2" and shown[1] == ["CO2", "640", "PPM"], shown
+    finally:
+        time.monotonic_ns = real
+
+
 def test_rain_gauge_tip_event():
     n = news.News()
     assert n.message("chatty/nodes/rain/data", json.dumps({"tip_count": 4}), NOW, 1) == []

@@ -105,10 +105,10 @@ class Library:
                 return None
             return tide.card(self.tides, utc, self.local_hm, self.tide_units, seconds)
         if name == "greenhouse":
-            card = self.news.greenhouse_card(mono)
-            if card:
-                card["seconds"] = seconds
-            return card
+            cards = [c for c in (self.news.greenhouse_card(mono), self.news.co2_card(mono)) if c]
+            for card in cards:
+                card["seconds"] = seconds      # CO2 (if the greenhouse has it) right after
+            return cards or None
         if name == "roll":
             return self.news.roll(mono) or None
         if name == "sun":
@@ -134,7 +134,7 @@ class Library:
         elif name == "clock":
             self._clock(seconds)
         else:
-            self.queue = [thing]
+            self.queue = thing if isinstance(thing, list) else [thing]
             self._next_card()
 
     def _clock(self, seconds):
