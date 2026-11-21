@@ -43,3 +43,5 @@
   `chatty_text.py` replaced them: digits for the clock from helvB12/helvR10.bdf (only
   DIGITS), card/roll text in terminalio.FONT (in flash, no RAM), moonrise arrows drawn.
   Label keeps display_text's API (.text/.x/.y/.color/.bounding_box; y = middle of line).
+- CO2 (2026-11-21): when the greenhouse node has its SCD-40, the greenhouse card is followed by a
+  CO2 card ("CO2 / 640 / PPM", orange with LOW/HIGH) in the same slot; no new setting needed.

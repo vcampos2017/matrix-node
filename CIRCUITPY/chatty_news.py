@@ -7,7 +7,7 @@ The Matrix node listens (read-only, like every node) to:
     chatty/nodes/+/status         everyone's heartbeat: who is online
     chatty/nodes/rain/data        the rain gauge (rate_mm_hr, rain_in, tip_count)
     chatty/nodes/lightning/data   the lightning node (last_strike: ts, distance_mi)
-    chatty/nodes/greenhouse/data  the greenhouse (air_temperature_f, soil_moisture_band)
+    chatty/nodes/greenhouse/data  the greenhouse (air_temperature_f, soil_moisture_band, co2_ppm)
 
 and turns them into cards (chatty_cards.py says which and for how long): a small picture plus up to three words of five letters
 or less (the panel stands on its side, 32 pixels wide), or one line of scrolling
@@ -288,6 +288,19 @@ class News:
         if len(lines) < 3:
             lines.insert(0, "PLANT")
         return _card("leaf", ORANGE if band == "dry" else GREEN, lines)
+
+    def co2_card(self, mono):
+        """CO2 from the greenhouse's SCD-40 ("CO2 / 640 / PPM"), or None without one."""
+        if not self._fresh(self.greenhouse_got, mono, READING_STALE):
+            return None
+        ppm = _num(self.greenhouse.get("co2_ppm"))
+        if ppm is None or ppm <= 0:
+            return None
+        band = str(self.greenhouse.get("co2_band") or "").lower()
+        if band not in ("low", "high"):
+            band = "low" if ppm < 350 else ("high" if ppm > 1500 else "")
+        return _card("leaf", ORANGE if band else GREEN,
+                     ["CO2", str(int(ppm + 0.5)), band.upper() or "PPM"])
 
     def roll(self, mono):
         """Roll call: [(short name, state), ...] for every other node heard from, state
