@@ -1,4 +1,5 @@
-"""Small helpers shared by the Matrix node's files: settings, a millisecond clock, dimming."""
+"""Small helpers shared by the Matrix node's files: settings, a millisecond clock, dimming
+(and the red night glow)."""
 # pylint: disable=import-error,broad-except
 import os
 import time
@@ -27,7 +28,14 @@ def now_ms():
     return time.monotonic_ns() // 1000000
 
 
+RED = [False]   # the red night glow is on (chatty_matrix sets it): dim() gives shades of red
+
+
 def dim(color, level):
+    if RED[0]:
+        r, g, b = (color >> 16) & 255, (color >> 8) & 255, color & 255
+        v = (3 * max(r, g, b) + (77 * r + 150 * g + 29 * b) // 128) // 5
+        return int(min(v, 255) * min(level, 1)) << 16
     if level >= 1:
         return color
     r = int(((color >> 16) & 255) * level)

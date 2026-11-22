@@ -481,6 +481,48 @@ def test_app_tornado_takes_over_and_lets_go():
         time.monotonic_ns = real
 
 
+def test_red_night_glow_and_tornado_beats_it():
+    import chatty_bits
+    real = time.monotonic_ns
+    clk = Clock()
+    try:
+        app = make_app(clk)
+        chatty_bits = sys.modules["chatty_bits"]   # the copy the app uses
+        app.night = (0, 24)                     # night all day, for the test
+        run(app, clk, 7)
+        assert chatty_bits.RED[0]
+        for item in (app.screen.time, app.screen.pct):
+            assert item.color & 0xFFFF == 0 and item.color >> 16 > 0, hex(item.color)
+        utc = app.utc()
+        fake.BROKER.post("chatty/alerts/active", {"alerts": [{"event": "Tornado Warning",
+                                                              "kind": "urgent",
+                                                              "expires_ts": utc + 900}],
+                                                  "ts": utc})
+        run(app, clk, 2)
+        assert app.mode == "tornado" and not chatty_bits.RED[0]
+        assert app.screen.icon_pal[2] & 0xFFFF       # its own colors, not red
+        app.red_night = False
+        fake.BROKER.post("chatty/alerts/active", {"alerts": [], "ts": app.utc()})
+        run(app, clk, 2)
+        assert not chatty_bits.RED[0]
+        assert chatty_bits.dim(0x00FF00, 0.5) == 0x007F00
+    finally:
+        chatty_bits.RED[0] = False
+        time.monotonic_ns = real
+
+
+def test_red_dim_keeps_shapes():
+    import chatty_bits
+    chatty_bits.RED[0] = True
+    try:
+        assert chatty_bits.dim(0xFFFFFF, 1) == 0xFF0000
+        assert chatty_bits.dim(0x000000, 1) == 0
+        assert chatty_bits.dim(0x1040A0, 1) >> 16 > 0x60          # blue doesn't vanish
+        assert chatty_bits.dim(0xFFFFFF, 0.25) == 0x3F0000
+    finally:
+        chatty_bits.RED[0] = False
+
+
 def test_app_news_round_rain_and_strike():
     real = time.monotonic_ns
     clk = Clock()

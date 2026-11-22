@@ -15,4 +15,5 @@ secrets = {
     # "node_name": "matrix",
     # "twelve_hour": True,
     # "night_start": 22, "night_end": 7,
+    # "night_red": True,          # dim red at night (False = just dimmer)
 }

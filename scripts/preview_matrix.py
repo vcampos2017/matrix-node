@@ -25,6 +25,7 @@ from PIL import Image, ImageDraw  # noqa: E402
 import fake_circuitpython as fake  # noqa: E402
 
 fake.install({})
+import chatty_bits  # noqa: E402
 import chatty_cards as cards  # noqa: E402
 import chatty_clock as clock  # noqa: E402
 import chatty_news as news  # noqa: E402
@@ -90,7 +91,11 @@ def moon(draw, x0, y0, phase):
                 continue
             edge = math.sqrt(max(0, 1 - ny * ny))
             lit = nx > k * edge if phase < 0.5 else nx < -k * edge
-            draw.point((x0 + x, y0 + y), fill=(200, 200, 170) if lit else (25, 25, 35))
+            fill = (200, 200, 170) if lit else (25, 25, 35)
+            if chatty_bits.RED[0]:                  # the red night glow tints the moon too
+                c = chatty_bits.dim((fill[0] << 16) | (fill[1] << 8) | fill[2], 0.6)
+                fill = (c >> 16, 0, 0)
+            draw.point((x0 + x, y0 + y), fill=fill)
 
 
 def main(out):
@@ -163,6 +168,14 @@ def main(out):
             s.step_scroll(width)
         shots.append(("tornado-" + tag, paint(s)))
         s.tornado(False, False)
+        chatty_bits.RED[0] = True                    # night: the red glow
+        s.level = 0.25
+        s.show_clock(local, moon_info, True, wifi=3)
+        shots.append(("night-red-clock-" + tag, paint(s)))
+        s.show_card(n.greenhouse_card(2))
+        shots.append(("night-red-greenhouse-" + tag, paint(s)))
+        chatty_bits.RED[0] = False
+        s.level = 1.0
     for name, img in shots:
         img.save(os.path.join(out, name + ".png"))
     # one sheet of the portrait ones (the way the panel stands)
