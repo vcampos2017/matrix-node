@@ -511,6 +511,55 @@ def test_red_night_glow_and_tornado_beats_it():
         time.monotonic_ns = real
 
 
+def test_red_moon_from_any_bmp():
+    import io
+    import tempfile
+    try:
+        from PIL import Image
+    except ImportError:
+        return
+    import chatty_redmoon
+    disc = Image.new("RGB", (32, 32), (0, 0, 0))
+    for y in range(32):
+        for x in range(32):
+            if (x - 15.5) ** 2 + (y - 15.5) ** 2 < 140:
+                disc.putpixel((x, y), (200, 210, 255) if x > 12 else (60, 60, 80))
+    want = {}
+    for y in range(32):
+        for x in range(32):
+            r, g, b = disc.getpixel((x, y))
+            want[x, y] = ((77 * r + 150 * g + 29 * b) >> 8) >> 4
+    pics = {"24": disc, "32": disc.convert("RGBA"), "8": disc.convert("P", palette=Image.ADAPTIVE, colors=16)}
+    for kind, img in pics.items():
+        buf = io.BytesIO()
+        img.save(buf, "BMP")
+        buf.seek(0)
+        got = chatty_redmoon.read(buf, lambda w, h: fake.Bitmap(w, h, 16))
+        assert (got.width, got.height) == (32, 32), kind
+        for (x, y), v in want.items():
+            assert abs(got[x, y] - v) <= 1, (kind, x, y, got[x, y], v)
+    buf = io.BytesIO()
+    disc.convert("L").point(lambda v: 255 if v > 128 else 0).convert("1").save(buf, "BMP")
+    buf.seek(0)
+    got = chatty_redmoon.read(buf, lambda w, h: fake.Bitmap(w, h, 16))
+    assert got[20, 16] == 15 and got[0, 0] == 0
+    # the whole tile: red shades only, 16 of them
+    import chatty_bits
+    path = os.path.join(tempfile.mkdtemp(), "moon50.bmp")
+    disc.save(path)
+    chatty_bits.RED[0] = True
+    try:
+        t = chatty_redmoon.tile(path, sys.modules["displayio"], chatty_bits.dim)
+    finally:
+        chatty_bits.RED[0] = False
+    assert all(c & 0xFFFF == 0 for c in t.pixel_shader) and t.pixel_shader[15] >> 16 > 100
+    try:
+        chatty_redmoon.read(io.BytesIO(b"GIF89a" + bytes(60)), None)
+        raise AssertionError("expected ValueError")
+    except ValueError:
+        pass
+
+
 def test_red_dim_keeps_shapes():
     import chatty_bits
     chatty_bits.RED[0] = True

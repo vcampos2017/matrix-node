@@ -47,5 +47,7 @@
   CO2 card ("CO2 / 640 / PPM", orange with LOW/HIGH) in the same slot; no new setting needed.
 - Red night glow (2026-11-22, with chatty-node's night_red.py): at night (`night_start`/`night_end`)
   `chatty_bits.dim()` gives shades of red while `chatty_bits.RED[0]` is on, so every dimmed color
-  turns red, and an indexed moon picture's palette is tinted when it loads. A Tornado Warning turns it
+  turns red. The moon BMP (shown from flash, can't be tinted) is read at night by
+  `chatty_redmoon.py` into a 16-shade red Bitmap (32x32 = 512 bytes; imported only once night comes,
+  about 2 KB in all; falls back to the normal moon and prints "Red moon:" if the file can't be read). A Tornado Warning turns it
   off (full color). `night_red` in secrets.py (default True). Preview: `night-red-*` pictures.
