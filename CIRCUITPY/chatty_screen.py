@@ -12,7 +12,7 @@ import displayio
 
 import chatty_art as art
 import chatty_clock as clock
-from chatty_bits import dim
+from chatty_bits import dim, RED
 
 DIGITS = "0123456789:/.%- APM"
 BITPLANES = 4                   # 16 shades per color (6 cost about 4 KB more memory)
@@ -101,6 +101,9 @@ def moon_bitmap(frame):
     except Exception:
         bmp = displayio.OnDiskBitmap(open(path, "rb"))
         shader = displayio.ColorConverter()
+    if RED[0] and isinstance(shader, displayio.Palette):
+        for i in range(len(shader)):    # red night glow
+            shader[i] = dim(shader[i], 0.6)
     return displayio.TileGrid(bmp, pixel_shader=shader)
 
 
@@ -118,6 +121,7 @@ class Screen:
         self.moon = displayio.Group()
         self.moon_tile = displayio.Group()          # holds the moon picture
         self.moon_frame = None
+        self.moon_red = False
         self.moon.append(self.moon_tile)
         self.rain_bmp = displayio.Bitmap(self.w, self.h, 2)
         rain_pal = displayio.Palette(2)
@@ -210,7 +214,7 @@ class Screen:
         if moon:
             frame = int(moon["phase"] * 100) % 100
             moved = not len(self.moon_tile) or self.moon_tile[0].y != moon_y
-            if frame != self.moon_frame or moved:
+            if frame != self.moon_frame or moved or self.moon_red != RED[0]:
                 try:
                     tile = moon_bitmap(frame)
                     tile.y = moon_y
@@ -218,6 +222,7 @@ class Screen:
                         self.moon_tile.pop()
                     self.moon_tile.append(tile)
                     self.moon_frame = frame
+                    self.moon_red = RED[0]
                 except Exception as ex:
                     print("Moon picture:", repr(ex))
             lit = moon["lit"] * 100

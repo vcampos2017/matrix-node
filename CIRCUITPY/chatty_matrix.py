@@ -28,6 +28,7 @@ Settings, in secrets.py (or settings.toml with the same names in capitals):
     node_name              default "matrix"
     twelve_hour            default True
     night_start, night_end default 22 and 7: text dims at night
+    night_red              default True: dim red at night (not over a Tornado Warning)
     cards                  the card library's order and seconds (chatty_cards.py)
     news_every             (older setting) seconds of clock when "cards" isn't set
 
@@ -56,7 +57,7 @@ import chatty_cards as cardsmod
 import chatty_clock as clock
 import chatty_moon as moonmath
 import chatty_news as newsmod
-from chatty_bits import setting, flag, now_ms
+from chatty_bits import setting, flag, now_ms, RED
 from chatty_library import Library
 from chatty_net import Net, Link, free
 from chatty_panels import ClockBits, Roll, Fx
@@ -112,6 +113,7 @@ class App(Library):
             self.lat = self.lon = None
             print("No latitude/longitude in secrets.py: no moonrise/moonset times")
         self.night = (int(setting("night_start", 22)), int(setting("night_end", 7)))
+        self.red_night = flag(setting("night_red", True))
         self.deck = cardsmod.Deck(cardsmod.parse(setting("cards"), setting("news_every")))
         self.tide_units = "english"
         self.tides = []                 # from Chatty's chatty/tides
@@ -286,9 +288,11 @@ class App(Library):
         t = now_ms()
         utc = self.utc()
         mono = t // 1000
-        self.screen.level = NIGHT_LEVEL if self.is_night(utc) else 1.0
+        night = self.is_night(utc)
+        self.screen.level = NIGHT_LEVEL if night else 1.0
 
         tornado = self.news.tornado(utc, mono)
+        RED[0] = bool(self.red_night and night and not tornado)
         if tornado:
             self.screen.tornado(True, (t // 500) % 2 == 0)
             self.fx.stop()

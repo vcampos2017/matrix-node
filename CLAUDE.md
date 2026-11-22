@@ -45,3 +45,7 @@
   Label keeps display_text's API (.text/.x/.y/.color/.bounding_box; y = middle of line).
 - CO2 (2026-11-21): when the greenhouse node has its SCD-40, the greenhouse card is followed by a
   CO2 card ("CO2 / 640 / PPM", orange with LOW/HIGH) in the same slot; no new setting needed.
+- Red night glow (2026-11-22, with chatty-node's night_red.py): at night (`night_start`/`night_end`)
+  `chatty_bits.dim()` gives shades of red while `chatty_bits.RED[0]` is on, so every dimmed color
+  turns red, and an indexed moon picture's palette is tinted when it loads. A Tornado Warning turns it
+  off (full color). `night_red` in secrets.py (default True). Preview: `night-red-*` pictures.
