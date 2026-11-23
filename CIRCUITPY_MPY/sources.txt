@@ -9,7 +9,8 @@ chatty_moon.py 109d57318c49e0fa
 chatty_net.py bde3c213338b0a50
 chatty_news.py ed01fd7f6c10d355
 chatty_panels.py dbc3cfa3706cb493
-chatty_screen.py 590908dea9d61c30
+chatty_redmoon.py 4563e4334e010de8
+chatty_screen.py ac7b16d4eafddb11
 chatty_text.py 245964487f2532e4
 chatty_tide.py 579d33fab5d79f52
 chatty_trend.py 347eb7fbaab609a7

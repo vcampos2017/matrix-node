@@ -95,15 +95,18 @@ def load_fonts(folder="/fonts"):
 
 def moon_bitmap(frame):
     path = "moon/moon" + "{:02d}".format(frame) + ".bmp"
+    if RED[0]:                          # red night glow: a small red copy (chatty_redmoon)
+        try:
+            import chatty_redmoon
+            return chatty_redmoon.tile(path, displayio, dim)
+        except Exception as ex:
+            print("Red moon:", repr(ex))
     try:
         bmp = displayio.OnDiskBitmap(path)
         shader = getattr(bmp, "pixel_shader", None) or displayio.ColorConverter()
     except Exception:
         bmp = displayio.OnDiskBitmap(open(path, "rb"))
         shader = displayio.ColorConverter()
-    if RED[0] and isinstance(shader, displayio.Palette):
-        for i in range(len(shader)):    # red night glow
-            shader[i] = dim(shader[i], 0.6)
     return displayio.TileGrid(bmp, pixel_shader=shader)
 
 
