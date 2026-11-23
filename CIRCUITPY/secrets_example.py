@@ -9,7 +9,7 @@ secrets = {
     "mqtt_hosts": "192.168.1.x",        # Chatty's home address (on Chatty: hostname -I)
     # The card library: which screens it rotates through and for how many seconds each
     # (chatty_cards.py lists them). A Tornado Warning always takes over, whatever this says.
-    "cards": "clock:20, news, tide:8, clock:20, news, greenhouse:6, roll:8, clock:20, news, sun:6",
+    "cards": "clock:20, news, tide:8, clock:20, news, greenhouse:6, trend:6, roll:8, clock:20, news, sun:6",
     # Tides come from Chatty: set CHATTY_TIDE_STATION in her /etc/chatty/secrets.env.
     # "rotation": 0,                  # 0 / 90 / 180 / 270: skips the tilt sensor (saves memory)
     # "node_name": "matrix",

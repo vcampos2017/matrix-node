@@ -27,6 +27,7 @@ import fake_circuitpython as fake  # noqa: E402
 fake.install({})
 import chatty_bits  # noqa: E402
 import chatty_cards as cards  # noqa: E402
+import chatty_trend as trend  # noqa: E402
 import chatty_clock as clock  # noqa: E402
 import chatty_news as news  # noqa: E402
 import chatty_screen  # noqa: E402
@@ -150,6 +151,11 @@ def main(out):
                 for _ in range(s.w + 20):
                     s.step_scroll(width)
             shots.append(("card-" + card["icon"] + "-" + tag, paint(s)))
+        trends = {"pressure_hpa": 1008.6, "pressure_3h": -4.2, "temp_f": 41.2, "temp_2h": -6.1,
+                  "advisories": ["pressure", "frost"]}
+        for i, card in enumerate(trend.cards(trends)):
+            s.show_card(card)
+            shots.append(("trend-" + ("pressure", "greenhouse")[i] + "-" + tag, paint(s)))
         roll.show(n.roll(2))
         shots.append(("card-roll-" + tag, paint(s)))
         s.show_card(n.cards(now, 2, hm)[1])
@@ -174,6 +180,8 @@ def main(out):
         shots.append(("night-red-clock-" + tag, paint(s)))
         s.show_card(n.greenhouse_card(2))
         shots.append(("night-red-greenhouse-" + tag, paint(s)))
+        s.show_card(trend.cards(trends)[0])
+        shots.append(("night-red-trend-" + tag, paint(s)))
         chatty_bits.RED[0] = False
         s.level = 1.0
     for name, img in shots:

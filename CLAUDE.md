@@ -49,3 +49,8 @@
   `chatty_bits.dim()` gives shades of red while `chatty_bits.RED[0]` is on, so every dimmed color
   turns red, and an indexed moon picture's palette is tinted when it loads. A Tornado Warning turns it
   off (full color). `night_red` in secrets.py (default True). Preview: `night-red-*` pictures.
+- Trends card (2026-11-23, with chatty-node's trends.py): `chatty_trend.py` reads retained `chatty/trends`
+  (older than 30 min = skipped): "1009 / MB / DROP" (arrow down/up/level; FAST! red, DROP orange, RISE cyan,
+  STEDY green) and, when the greenhouse moved 5+ F in 2 h or Chatty has a frost / cold-snap heads-up,
+  "41F / -6F / FROST". Card name `trend` in the `cards` line (in DEFAULT after greenhouse); Chatty's heads-ups
+  also join the news round. Colors go through dim(), so it glows red at night like everything else.

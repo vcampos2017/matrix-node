@@ -12,6 +12,7 @@ import chatty_cards as cardsmod
 import chatty_clock as clock
 import chatty_moon as moonmath
 import chatty_tide as tide
+import chatty_trend as trend
 from chatty_bits import now_ms
 
 
@@ -47,6 +48,12 @@ class Library:
     def _message(self, topic, text):
         if topic in ("chatty/clock", "chatty/tides"):
             self._chatty_feed(topic, text)
+            return
+        if topic == "chatty/trends":
+            try:
+                self.trends = json.loads(text) if text else None
+            except (ValueError, TypeError):
+                self.trends = None
             return
         utc = self.utc()
         for event in self.news.message(topic, text, utc, now_ms() // 1000):
@@ -96,6 +103,7 @@ class Library:
             return True
         if name == "news":
             cards = self.news.cards(utc, mono, self.local_hm)
+            cards += trend.news(trend.fresh(getattr(self, "trends", None), utc))
             for card in cards:
                 if not card.get("scroll"):
                     card["seconds"] = seconds
@@ -109,6 +117,8 @@ class Library:
             for card in cards:
                 card["seconds"] = seconds      # CO2 (if the greenhouse has it) right after
             return cards or None
+        if name == "trend":
+            return trend.cards(trend.fresh(getattr(self, "trends", None), utc), seconds) or None
         if name == "roll":
             return self.news.roll(mono) or None
         if name == "sun":
