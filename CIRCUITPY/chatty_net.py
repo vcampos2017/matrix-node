@@ -18,7 +18,7 @@ from chatty_bits import setting, now_ms
 
 MQTT_LOOP_S = 0.25
 HUB_SAVE_GAP_S = 600
-TOPICS = ("chatty/hub", "chatty/clock", "chatty/tides", "chatty/alerts/active", "chatty/forecast/rain",
+TOPICS = ("chatty/hub", "chatty/clock", "chatty/tides", "chatty/trends", "chatty/alerts/active", "chatty/forecast/rain",
           "chatty/nodes/+/status", "chatty/nodes/rain/data",
           "chatty/nodes/lightning/data", "chatty/nodes/greenhouse/data")
 

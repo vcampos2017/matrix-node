@@ -397,7 +397,7 @@ def test_icons_are_square():
         assert set("".join(rows)) <= set(".#+"), name
     for name, rows in art.MINI.items():
         assert len(rows) == art.MINI_H and all(len(r) == art.MINI_W for r in rows), name
-    for name in ("tideup", "tidedn", "sun", "sunup", "sundn"):
+    for name in ("tideup", "tidedn", "sun", "sunup", "sundn", "up", "down", "level"):
         assert art.pixels(name), name
 
 
@@ -783,6 +783,58 @@ def test_precompiled_files_match_the_code():
 TIDES_NOW = _noaa(("2026-11-17 14:06", "1.712", "H"), ("2026-11-17 20:48", "0.402", "L"),
                   ("2026-11-18 03:30", "1.905", "H"), ("2026-11-18 10:12", "-0.150", "L"),
                   ("2026-11-18 16:40", "1.600", "H"), ("2026-11-18 23:02", "0.500", "L"))
+
+
+# ------------------------------------------------------------------ weather trends
+
+import chatty_trend as trend  # noqa: E402
+
+TRENDS = {"pressure_hpa": 1008.6, "pressure_3h": -4.2, "temp_f": 41.2, "temp_1h": -2.6,
+          "temp_2h": -6.1, "humidity_3h": 4, "advisories": ["pressure", "frost"], "ts": NOW}
+
+
+def test_trend_cards():
+    p, t = trend.cards(TRENDS)
+    assert p["lines"] == ["1009", "MB", "DROP"] and p["icon"] == "down"
+    assert t["lines"] == ["41F", "-6F", "FROST"] and t["icon"] == "down"
+    for card in (p, t):
+        assert all(len(x) <= 5 for x in card["lines"]) and card["icon"] in art.ICONS
+    for p3, word in ((-7, "FAST!"), (-1.5, "LOWER"), (0.2, "STEDY"), (1.4, "UP"), (3.5, "RISE")):
+        assert trend.pressure_card({"pressure_hpa": 1000, "pressure_3h": p3})["lines"][2] == word
+    assert trend.pressure_card({"pressure_hpa": 1000})["lines"] == ["1000", "MB"]
+    calm = {"pressure_hpa": 1015, "pressure_3h": 0, "temp_f": 70, "temp_2h": -2, "advisories": []}
+    assert len(trend.cards(calm)) == 1 and trend.news(calm) == []      # no temperature news
+    assert trend.temp_card({"temp_f": 80, "temp_2h": 7})["lines"] == ["80F", "+7F", "2 HRS"]
+
+
+def test_trend_news_and_staleness():
+    assert [c["lines"][2] for c in trend.news(TRENDS)] == ["DROP", "FROST"]
+    assert trend.news({"pressure_hpa": 1000, "pressure_3h": -4, "advisories": ["pressure"]})
+    assert trend.fresh(TRENDS, NOW + 60) is TRENDS
+    assert trend.fresh(TRENDS, NOW + trend.STALE + 1) is None
+    assert trend.fresh(TRENDS, None) is TRENDS                     # no clock yet: trust it
+    assert trend.cards(None) == [] and trend.news(None) == []
+
+
+def test_app_shows_trends():
+    real = time.monotonic_ns
+    clk = Clock()
+    try:
+        app = make_app(clk, {"ssid": "HomeWiFi", "password": "x", "timezone": "America/Denver",
+                             "mqtt_hosts": "192.168.1.50", "cards": "clock:4, trend:3"})
+        body = dict(TRENDS)
+        body["ts"] = int(time.time())
+        fake.BROKER.post("chatty/trends", body)
+        run(app, clk, 2)
+        shown = []
+        for _ in range(12 * 25):
+            app.step()
+            clk.advance(1 / 25)
+            if app.mode == "card" and (not shown or shown[-1] != app.card["lines"]):
+                shown.append(app.card["lines"])
+        assert ["1009", "MB", "DROP"] in shown and ["41F", "-6F", "FROST"] in shown, shown
+    finally:
+        time.monotonic_ns = real
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@
 
 The order lives in secrets.py as one line, each card with its seconds:
 
-    "cards": "clock:20, news, tide:8, clock:20, news, greenhouse:6, roll:8, clock:20, news, sun:6",
+    "cards": "clock:20, news, tide:8, clock:20, news, greenhouse:6, trend:6, roll:8, clock:20, news, sun:6",
 
     clock        the moon clock (time, date, moon, moonrise/set and sunrise/set taking turns)
     news         what's new on the network: weather alerts (scrolling), a lightning strike,
@@ -10,6 +10,10 @@ The order lives in secrets.py as one line, each card with its seconds:
     tide         the next high or low tide, rising or falling (from Chatty: CHATTY_TIDE_STATION)
     greenhouse   temperature and soil moisture from the greenhouse node, then its CO2
                  (when it has a CO2 sensor)
+    trend        the air pressure and which way it's going (DROP, RISE...), plus the
+                 greenhouse cooling or warming 5+ degrees in 2 hours (from Chatty's
+                 chatty/trends). Chatty's heads-ups (pressure dropping, frost) also join
+                 the news round, whatever the line says.
     roll         roll call: a green or red dot for every node on the network
     sun          today's sunrise and sunset and the day's length (needs latitude/longitude)
 
@@ -23,8 +27,8 @@ Also here: WiFi signal bars from the signal strength (RSSI). Pure Python, tested
 computer.
 """
 
-DEFAULT = "clock, news, tide:8, clock, news, greenhouse:6, roll:8, clock, news, sun:6"
-SECONDS = {"clock": 20, "news": 5, "tide": 8, "greenhouse": 6, "roll": 8, "sun": 6}
+DEFAULT = "clock, news, tide:8, clock, news, greenhouse:6, trend:6, roll:8, clock, news, sun:6"
+SECONDS = {"clock": 20, "news": 5, "tide": 8, "greenhouse": 6, "trend": 6, "roll": 8, "sun": 6}
 
 
 def parse(text=None, clock_seconds=None):
